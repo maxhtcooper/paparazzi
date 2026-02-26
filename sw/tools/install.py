@@ -40,12 +40,15 @@ class InstallWindow(QWidget):
         if p.returncode == 0:
             print(f'  {GREEN}✔{NC} {cmd} {GREEN}done{NC}')
             print('')
+            self.buttonlist.setEnabled(True)
+            return True
         else:
             print(f'  {RED}{BOLD}✘ FAILED:{NC} {cmd}')
             print(f'{RED}    Check documentation: {docs}{NC}')
             print('')
             self._ok = False
-        self.buttonlist.setEnabled(True)
+            self.buttonlist.setEnabled(True)
+            return False
         
 
     def view(self,link):
@@ -126,7 +129,11 @@ class InstallWindow(QWidget):
             self.execute('sudo sh -c \'echo "deb http://packages.osrfoundation.org/gazebo/ubuntu-stable `lsb_release -cs` main" > /etc/apt/sources.list.d/gazebo-stable.list\'')
             self.execute('wget http://packages.osrfoundation.org/gazebo.key -O - | sudo apt-key add -')
             self.execute('sudo apt update')
-            self.execute('sudo -E apt-get -f -y install gazebo11 libgazebo11-dev')
+            # Try gazebo11 first, fallback to gazebo if it fails
+            if not self.execute('sudo -E apt-get -f -y install gazebo11 libgazebo11-dev'):
+                print(f'{YELLOW}  ℹ gazebo11 not available, trying fallback gazebo package...{NC}')
+                self._ok = True  # Reset and try fallback
+                self.execute('sudo -E apt-get -f -y install gazebo libgazebo-dev')
         self.execute('git submodule init && git submodule sync && git submodule update ./sw/ext/tudelft_gazebo_models')
         self.done('Gazebo Classic installed successfully', 'Gazebo Classic installation failed')
 
