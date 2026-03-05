@@ -62,8 +62,3 @@
     <file name="cv_detect_color_object.c"/>
   </makefile>
 </module>
-
-<module name="cv_opticflow">
-  <define name="OPTICFLOW_CAMERA" value="front_camera"/> <define name="MAX_HORIZON" value="10"/> <define name="OPTICFLOW_MAX_TRACK_CORNERS" value="10"/> </module>
-
-<module name="of_avoidance"/>
