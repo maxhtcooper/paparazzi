@@ -17,8 +17,8 @@
 extern float oa_color_count_frac;
 
 // functions
-extern void orange_avoider_init(void);
-extern void orange_avoider_periodic(void);
+extern void motion_module_group13_init(void);
+extern void motion_module_group13_periodic(void);
 
 #endif
 
