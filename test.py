@@ -79,8 +79,8 @@ class ObjectDetector():
 
 object_detector = ObjectDetector()
 
-image_path = 'AE4317_2019_datasets/cyberzoo_poles/20190121-135009/106044555.jpg'
-
+#image_path = 'AE4317_2019_datasets/cyberzoo_poles/20190121-135009/106044555.jpg'
+image_path = 'p04x5hlq.jpg'
 image = cv2.imread(image_path)
 
 if image is not None:
