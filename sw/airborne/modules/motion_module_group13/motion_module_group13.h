@@ -10,12 +10,20 @@
  * Example on how to use the colours detected to avoid orange pole in the cyberzoo
  */
 
-#ifndef ORANGE_AVOIDER_H
-#define ORANGE_AVOIDER_H
+// #ifndef ORANGE_AVOIDER_H
+// #define ORANGE_AVOIDER_H
+#ifndef MOTION_MODULE_GROUP13_H
+#define MOTION_MODULE_GROUP13_H
+#include <stdint.h>
 
 // settings
 extern float oa_color_count_frac;
 
+// global variables
+extern int16_t latest_bbox_x;
+extern int16_t latest_bbox_y;
+extern int16_t latest_bbox_width;
+extern int16_t latest_bbox_height;
 // functions
 extern void motion_module_group13_init(void);
 extern void motion_module_group13_periodic(void);
