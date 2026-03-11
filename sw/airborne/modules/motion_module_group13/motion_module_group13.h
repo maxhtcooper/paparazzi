@@ -20,10 +20,10 @@
 extern float oa_color_count_frac;
 
 // global variables
-extern int16_t latest_bbox_x;
-extern int16_t latest_bbox_y;
-extern int16_t latest_bbox_width;
-extern int16_t latest_bbox_height;
+extern int16_t svm_bbox_x;
+extern int16_t svm_bbox_y;
+extern int16_t svm_bbox_width;
+extern int16_t svm_bbox_height;
 // functions
 extern void motion_module_group13_init(void);
 extern void motion_module_group13_periodic(void);

@@ -42,10 +42,10 @@
 
 
 // Bounding box memory variables
-int16_t latest_bbox_x = 0;
-int16_t latest_bbox_y = 0;
-int16_t latest_bbox_width = 0;
-int16_t latest_bbox_height = 0;
+int16_t svm_bbox_x = 0;
+int16_t svm_bbox_y = 0;
+int16_t svm_bbox_width = 0;
+int16_t svm_bbox_height = 0;
 
 static uint8_t moveWaypointForward(uint8_t waypoint, float distanceMeters);
 static uint8_t calculateForwards(struct EnuCoor_i *new_coor, float distanceMeters);
@@ -83,44 +83,59 @@ const int16_t max_trajectory_confidence = 5; // number of consecutive negative o
 // #define ORANGE_AVOIDER_VISUAL_DETECTION_ID ABI_BROADCAST
 // #endif
 
+// --- 1. ORANGE FILTER LISTENER (For Flight) ---
 #ifndef ORANGE_AVOIDER_VISUAL_DETECTION_ID
 #define ORANGE_AVOIDER_VISUAL_DETECTION_ID ABI_BROADCAST
 #endif
 
 static abi_event color_detection_ev;
 static void color_detection_cb(uint8_t __attribute__((unused)) sender_id,
-                               int16_t pixel_x, int16_t  pixel_y,
-                               int16_t pixel_width, int16_t  pixel_height,
+                               int16_t __attribute__((unused)) pixel_x, int16_t __attribute__((unused)) pixel_y,
+                               int16_t __attribute__((unused)) pixel_width, int16_t __attribute__((unused)) pixel_height,
                                int32_t quality, int16_t __attribute__((unused)) extra)
 {
-  color_count = quality;
+  // Keep the drone flying using the orange filter's pixel count!
+  color_count = quality; 
+}
 
-  // set the latest bounding box coordinates.
-  latest_bbox_x = pixel_x;
-  latest_bbox_y = pixel_y;
-  latest_bbox_width = pixel_width;
-  latest_bbox_height = pixel_height;
+
+// --- 2. SVM LISTENER (For Visualization) ---
+#ifndef SVM_VISUAL_DETECTION_ID
+#define SVM_VISUAL_DETECTION_ID ABI_BROADCAST // We will update this ID later to match the SVM!
+#endif
+
+static abi_event svm_detection_ev;
+static void svm_detection_cb(uint8_t __attribute__((unused)) sender_id,
+                               int16_t pixel_x, int16_t  pixel_y,
+                               int16_t pixel_width, int16_t  pixel_height,
+                               int32_t __attribute__((unused)) quality, int16_t __attribute__((unused)) extra)
+{
+  // Save the AI's coordinates so our drawing function can see them
+  svm_bbox_x = pixel_x;
+  svm_bbox_y = pixel_y;
+  svm_bbox_width = pixel_width;
+  svm_bbox_height = pixel_height;
 }
 
 extern struct video_config_t front_camera;
 static struct video_listener *my_video_listener;
 
-static struct image_t * draw_bounding_box(struct image_t *img, uint8_t camera_id){
-  // only draw if valid bounding box
-  (void)camera_id; // to avoid unused parameter warning, since we only have one camera in this example
-  VERBOSE_PRINT("Video frame received! Current bbox width: %d\n", latest_bbox_width);
-  if (latest_bbox_width > 0 && latest_bbox_height > 0){
-    //calculate top left and bottom right points of the bbox
-    int x_min = latest_bbox_x - (latest_bbox_width / 2);
-    int y_min = latest_bbox_y - (latest_bbox_height / 2);
-    int x_max = latest_bbox_x + (latest_bbox_width / 2);
-    int y_max = latest_bbox_y + (latest_bbox_height / 2);
+// --- 3. SVM DRAWING FUNCTION ---
+static struct image_t * draw_svm_bounding_box(struct image_t *img, uint8_t camera_id){
+  (void)camera_id; 
+  if (svm_bbox_width > 0 && svm_bbox_height > 0){
+    int x_min = svm_bbox_x - (svm_bbox_width / 2);
+    int y_min = svm_bbox_y - (svm_bbox_height / 2);
+    int x_max = svm_bbox_x + (svm_bbox_width / 2);
+    int y_max = svm_bbox_y + (svm_bbox_height / 2);
 
-    uint8_t color[3] = {255, 0, 0}; // red color for bounding box
+    // YUV color for bright Green so it contrasts with your red color filter boxes!
+    uint8_t green_yuv[3] = {150, 43, 21}; 
     
-    // draw a red bounding box on the image
-    VERBOSE_PRINT("Drawing bounding box at x:%d y:%d width:%d height:%d\n", latest_bbox_x, latest_bbox_y, latest_bbox_width, latest_bbox_height);
-    image_draw_rectangle(img, x_min, x_max, y_min, y_max, color); // red bounding box
+    // Draw thick green bounding box
+    for (int t = 0; t < 3; t++) {
+        image_draw_rectangle(img, x_min-t, x_max+t, y_min-t, y_max+t, green_yuv);
+    }
   }
   return img;
 }
@@ -132,11 +147,15 @@ void motion_module_group13_init(void)
   // Initialise random values
   srand(time(NULL));
   chooseRandomIncrementAvoidance();
-  // my_video_listener = cv_add_to_device(&front_camera, draw_bounding_box, 0, 0);
-  // bind our colorfilter callbacks to receive the color filter outputs
-  AbiBindMsgVISUAL_DETECTION(ORANGE_AVOIDER_VISUAL_DETECTION_ID, &color_detection_ev, color_detection_cb);
-  // bind the video listener to draw bounding boxes
   
+  // Bind orange filter for flight
+  AbiBindMsgVISUAL_DETECTION(ORANGE_AVOIDER_VISUAL_DETECTION_ID, &color_detection_ev, color_detection_cb);
+
+  // Bind SVM for visualization
+  AbiBindMsgVISUAL_DETECTION(SVM_VISUAL_DETECTION_ID, &svm_detection_ev, svm_detection_cb);
+  
+  // Start drawing the SVM boxes on the video feed
+  my_video_listener = cv_add_to_device(&front_camera, draw_svm_bounding_box, 0, 0);
 }
 
 /*
