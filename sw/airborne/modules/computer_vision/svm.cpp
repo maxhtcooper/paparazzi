@@ -11,10 +11,10 @@ uint8_t obstacle_detected = 0;
 static cv::Mat previous_gray;
 
 // Paste the parameters exported from your Python script here
-const float scaler_mean[3] = {0.0f, 0.0f, 0.0f}; // REPLACE THESE
-const float scaler_scale[3] = {1.0f, 1.0f, 1.0f}; // REPLACE THESE
-const float svm_weights[3] = {0.0f, 0.0f, 0.0f}; // REPLACE THESE
-const float svm_intercept = 0.0f;                // REPLACE THESE
+const float scaler_mean[3] = {0.849761, 0.004354, 4.496045};
+const float scaler_scale[3] = {1.168939, 0.011164, 13.586546};
+const float svm_weights[3] = {2.977097, -0.235010, -2.915282};
+const float svm_intercept = -0.059826;
 
 extern "C" {
 
