@@ -1,0 +1,55 @@
+<!DOCTYPE module SYSTEM "module.dtd">
+
+<module name="cv_group13" dir="computer_vision">
+  <doc>
+    <description>Group13 Optic Flow
+    Tests optic flow calculations.
+    
+    </description>
+    <define name="OPTIC_FLOW_DETECTOR_CAMERA1" value="front_camera|bottom_camera" description="Video device to use"/>
+    <define name="OPTIC_FLOW_DETECTOR_FPS1" value="10" description="Desired FPS (0: camera rate)"/>
+    <define name="TEST_FLAG" value="FALSE|TRUE" description="To be or not to be"/>
+  </doc>
+
+  <settings>
+    <dl_settings>
+      <dl_settings name="Group13OpticFlow">
+         <dl_setting var="test_setting" min="0" step="1" max="255" shortname="t_s"/>
+         <dl_setting var="test_flag"  min="0" step="1" max="1" values="False|True" shortname="t_f" />
+      </dl_settings>
+    </dl_settings>
+  </settings>
+
+  <dep>
+    <depends>video_thread,pose_history</depends>
+  </dep>
+
+  <header>
+    <file name="cv_group13.h"/>
+  </header>
+
+  <init fun="optic_flow_detector_init()"/>
+  <periodic fun="optic_flow_detector_periodic()" freq="10"/>
+  <makefile target="ap|nps">
+    <!-- Include the needed Computer Vision files -->
+    <include name="modules/computer_vision"/>
+    <file name="image.c" dir="modules/computer_vision/lib/vision"/>
+    <file name="jpeg.c" dir="modules/computer_vision/lib/encoding"/>
+    <file name="rtp.c" dir="modules/computer_vision/lib/encoding"/>
+
+    <!-- The optical flow module (calculator) -->
+    <file name="cv_group13.c"/>
+    <file name="opticflow_calculator.c" dir="modules/computer_vision/opticflow"/>
+    <file name="size_divergence.c" dir="modules/computer_vision/opticflow"/>
+    <file name="linear_flow_fit.c" dir="modules/computer_vision/opticflow"/>
+    <file name="pprz_algebra_float.c" dir="math"/>
+    <file name="pprz_matrix_decomp_float.c" dir="math"/>
+
+    <!-- Main vision calculations -->
+    <file name="act_fast.c" dir="modules/computer_vision/lib/vision"/>
+    <file name="fast_rosten.c" dir="modules/computer_vision/lib/vision"/>
+    <file name="lucas_kanade.c" dir="modules/computer_vision/lib/vision"/>
+    <file name="edge_flow.c" dir="modules/computer_vision/lib/vision"/>
+    <file name="undistortion.c" dir="modules/computer_vision/lib/vision"/>
+  </makefile>
+</module>

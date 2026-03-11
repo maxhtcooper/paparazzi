@@ -54,6 +54,10 @@ float oa_color_count_frac = 0.18f;
 
 // define and initialise global variables
 enum navigation_state_t navigation_state = SEARCH_FOR_SAFE_HEADING;
+
+int16_t flow_der_x = 0;
+int16_t flow_der_y = 0;
+int32_t divergence = 0;
 int32_t color_count = 0;                // orange color count from color filter for obstacle detection
 int16_t obstacle_free_confidence = 0;   // a measure of how certain we are that the way ahead is safe.
 float heading_increment = 50.f;          // heading angle increment [deg]
@@ -68,16 +72,18 @@ const int16_t max_trajectory_confidence = 5; // number of consecutive negative o
  * in different threads. The ABI event is triggered every time new data is sent out, and as such the function
  * defined in this file does not need to be explicitly called, only bound in the init function
  */
-#ifndef ORANGE_AVOIDER_VISUAL_DETECTION_ID
-#define ORANGE_AVOIDER_VISUAL_DETECTION_ID ABI_BROADCAST
+#ifndef OPTIC_FLOW_VISUAL_DETECTION_ID
+#define OPTIC_FLOW_VISUAL_DETECTION_ID ABI_BROADCAST
 #endif
 static abi_event color_detection_ev;
-static void color_detection_cb(uint8_t __attribute__((unused)) sender_id,
-                               int16_t __attribute__((unused)) pixel_x, int16_t __attribute__((unused)) pixel_y,
-                               int16_t __attribute__((unused)) pixel_width, int16_t __attribute__((unused)) pixel_height,
-                               int32_t quality, int16_t __attribute__((unused)) extra)
+static void optic_flow_cb(uint8_t __attribute__((unused)) sender_id,
+                               int16_t __attribute__((unused)) flow_x, int16_t __attribute__((unused)) flow_y,
+                               int16_t flow_der_x_received, int16_t flow_der_y_received,
+                               int32_t divergence_received, int16_t __attribute__((unused)) extra)
 {
-  color_count = quality;
+  flow_der_x = flow_der_x_received;
+  flow_der_y = flow_der_y_received;
+  divergence = divergence_received;
 }
 
 /*
@@ -90,7 +96,7 @@ void motion_module_group13_init(void)
   chooseRandomIncrementAvoidance();
 
   // bind our colorfilter callbacks to receive the color filter outputs
-  AbiBindMsgVISUAL_DETECTION(ORANGE_AVOIDER_VISUAL_DETECTION_ID, &color_detection_ev, color_detection_cb);
+  AbiBindMsgVISUAL_DETECTION(OPTIC_FLOW_VISUAL_DETECTION_ID, &color_detection_ev, optic_flow_cb);
 }
 
 /*
@@ -211,9 +217,10 @@ uint8_t calculateForwards(struct EnuCoor_i *new_coor, float distanceMeters)
   // Now determine where to place the waypoint you want to go to
   new_coor->x = stateGetPositionEnu_i()->x + POS_BFP_OF_REAL(sinf(heading) * (distanceMeters));
   new_coor->y = stateGetPositionEnu_i()->y + POS_BFP_OF_REAL(cosf(heading) * (distanceMeters));
-  VERBOSE_PRINT("YOU SHOULD SEE THIS: Calculated %f m forward position. x: %f  y: %f based on pos(%f, %f) and heading(%f)\n", distanceMeters,	
+  VERBOSE_PRINT("Calculated %f m forward position. x: %f  y: %f based on pos(%f, %f) and heading(%f)\n", distanceMeters,	
                 POS_FLOAT_OF_BFP(new_coor->x), POS_FLOAT_OF_BFP(new_coor->y),
                 stateGetPositionEnu_f()->x, stateGetPositionEnu_f()->y, DegOfRad(heading));
+  VERBOSE_PRINT("RECEIVED parameters: x_dot: %i y_dot: %i  divergence: %i\n", flow_der_x, flow_der_y, divergence);
   return false;
 }
 
