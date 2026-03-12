@@ -9,7 +9,11 @@
                 "limitSymbolsToIncludedHeaders": true
             },
             "includePath": [
-                "${workspaceFolder}/**"
+                "${workspaceFolder}/**",
+                "${workspaceFolder}/tests/**",
+                "${workspaceFolder}/sw/airborne/",
+                "${workspaceFolder}/sw/airborne/modules/",
+                "${workspaceFolder}/sw/airborne/arch/linux"
             ],
             "defines": [],
             "compilerPath": "/usr/bin/arm-none-eabi-gcc",
