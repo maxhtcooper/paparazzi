@@ -9,9 +9,9 @@ The avoidance strategy is to simply count the total number of orange pixels. Whe
 (given by color_count_frac) we assume that there is an obstacle and we turn.
 
 The color filter settings are set using the cv_detect_color_object. This module can run multiple filters simultaneously
-so you have to define which filter to use with the ORANGE_AVOIDER_VISUAL_DETECTION_ID setting.
+so you have to define which filter to use with the OPTIC_FLOW_VISUAL_DETECTION_ID setting.
     </description>
-    <define name="ORANGE_AVOIDER_VISUAL_DETECTION_ID" value="ABI_BROADCAST" description="which VISUAL_DETECTION message to receive for orange pixel detection."/>
+    <define name="OPTIC_FLOW_VISUAL_DETECTION_ID" value="ABI_BROADCAST" description="which VISUAL_DETECTION message to receive for orange pixel detection."/>
   </doc>
     <settings>
     <dl_settings>
@@ -22,7 +22,7 @@ so you have to define which filter to use with the ORANGE_AVOIDER_VISUAL_DETECTI
   </settings>
   
   <dep>
-    <depends>cv_detect_color_object, video_thread</depends>
+    <depends>cv_group13</depends>
   </dep>
   <header>
     <file name="motion_module_group13.h"/>

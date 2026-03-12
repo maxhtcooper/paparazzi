@@ -44,11 +44,14 @@
 #include "lib/vision/undistortion.h"
 #include "size_divergence.h"
 #include "linear_flow_fit.h"
-#include "modules/sonar/agl_dist.h"
 #include "generated/airframe.h"
 
 // to get the definition of front_camera / bottom_camera
 #include BOARD_CONFIG
+
+#ifndef OPTICFLOW_CAMERA
+#define OPTICFLOW_CAMERA OPTIC_FLOW_DETECTOR_CAMERA1
+#endif
 
 // whether to show the flow and corners:
 #define OPTICFLOW_SHOW_CORNERS 0
@@ -203,7 +206,7 @@ PRINT_CONFIG_VAR(OPTICFLOW_FAST9_PADDING_CAMERA2)
 
 
 #ifndef OPTICFLOW_METHOD
-#define OPTICFLOW_METHOD 0
+#define OPTICFLOW_METHOD 1
 #endif
 
 #ifndef OPTICFLOW_METHOD_CAMERA2
@@ -366,7 +369,7 @@ PRINT_CONFIG_VAR(OPTICFLOW_TRACK_BACK_CAMERA2)
 // Whether to draw the flow on the image:
 // False by default, since it changes the image and costs time.
 #ifndef OPTICFLOW_SHOW_FLOW
-#define OPTICFLOW_SHOW_FLOW FALSE
+#define OPTICFLOW_SHOW_FLOW TRUE
 #endif
 
 #ifndef OPTICFLOW_SHOW_FLOW_CAMERA2
@@ -380,6 +383,20 @@ PRINT_CONFIG_VAR(OPTICFLOW_SHOW_FLOW_CAMERA2)
 #include "filters/median_filter.h"
 struct MedianFilter3Float vel_filt;
 struct FloatRMat body_to_cam[2];
+
+/*
+ * agl_dist_value_filtered comes from modules/sonar/agl_dist.
+ * Keep it optional so optic flow can be reused without sonar/AGL.
+ */
+extern float agl_dist_value_filtered __attribute__((weak));
+
+static inline float get_agl_scale(void)
+{
+  if (&agl_dist_value_filtered != NULL) {
+    return agl_dist_value_filtered;
+  }
+  return 1.0f;
+}
 
 /* Functions only used here */
 static uint32_t timeval_diff(struct timeval *starttime, struct timeval *finishtime);
@@ -789,11 +806,12 @@ bool calc_fast9_lukas_kanade(struct opticflow_t *opticflow, struct image_t *img,
   // Right now this formula is under assumption that the flow only exist in the center axis of the camera.
   // TODO: Calculate the velocity more sophisticated, taking into account the drone's angle and the slope of the ground plane.
   // TODO: This is actually only correct for the bottom camera:
-  result->vel_cam.x = (float)result->flow_der_x * result->fps * agl_dist_value_filtered /
+  float agl_scale = get_agl_scale();
+  result->vel_cam.x = (float)result->flow_der_x * result->fps * agl_scale /
                       (opticflow->subpixel_factor * opticflow->camera->camera_intrinsics.focal_x);
-  result->vel_cam.y = (float)result->flow_der_y * result->fps * agl_dist_value_filtered /
+  result->vel_cam.y = (float)result->flow_der_y * result->fps * agl_scale /
                       (opticflow->subpixel_factor * opticflow->camera->camera_intrinsics.focal_y);
-  result->vel_cam.z = result->divergence * result->fps * agl_dist_value_filtered;
+  result->vel_cam.z = result->divergence * result->fps * agl_scale;
 
   //Apply a  median filter to the velocity if wanted
   if (opticflow->median_filter == true) {
@@ -1147,11 +1165,12 @@ bool calc_edgeflow_tot(struct opticflow_t *opticflow, struct image_t *img,
   // TODO scale flow to rad/s here
 
   // Calculate velocity
-  result->vel_cam.x = edgeflow.flow_x * fps_x * agl_dist_value_filtered * opticflow->camera->camera_intrinsics.focal_x /
+  float agl_scale = get_agl_scale();
+  result->vel_cam.x = edgeflow.flow_x * fps_x * agl_scale * opticflow->camera->camera_intrinsics.focal_x /
                       RES;
-  result->vel_cam.y = edgeflow.flow_y * fps_y * agl_dist_value_filtered * opticflow->camera->camera_intrinsics.focal_y /
+  result->vel_cam.y = edgeflow.flow_y * fps_y * agl_scale * opticflow->camera->camera_intrinsics.focal_y /
                       RES;
-  result->vel_cam.z = result->divergence * fps_x * agl_dist_value_filtered;
+  result->vel_cam.z = result->divergence * fps_x * agl_scale;
 
   //Apply a  median filter to the velocity if wanted
   if (opticflow->median_filter == true) {
