@@ -279,4 +279,10 @@
     <define name="LOW_BAT_LEVEL" value="11.1" unit="V"/>
     <define name="MAX_BAT_LEVEL" value="12.4" unit="V"/>
   </section>
+
+  <modules main_freq="512">
+    <module name="video_thread"/>
+    <module name="cv_colorfilter_tijn"/>
+  </modules>
+  
 </airframe>

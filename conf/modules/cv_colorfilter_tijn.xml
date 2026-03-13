@@ -1,0 +1,29 @@
+<!DOCTYPE module SYSTEM "module.dtd">
+<module name="cv_colorfilter_tijn" dir="computer_vision">
+  <doc>
+    <description>Color filter for detecting orange poles and calculating safe heading gaps.</description>
+  </doc>
+  
+  <settings>
+    <dl_settings>
+      <dl_settings NAME="Orange Filter">
+        <dl_setting MAX="255" MIN="0" STEP="1" VAR="orange_y_min" shortname="Y_min"/>
+        <dl_setting MAX="255" MIN="0" STEP="1" VAR="orange_y_max" shortname="Y_max"/>
+        <dl_setting MAX="255" MIN="0" STEP="1" VAR="orange_u_min" shortname="U_min"/>
+        <dl_setting MAX="255" MIN="0" STEP="1" VAR="orange_u_max" shortname="U_max"/>
+        <dl_setting MAX="255" MIN="0" STEP="1" VAR="orange_v_min" shortname="V_min"/>
+        <dl_setting MAX="255" MIN="0" STEP="1" VAR="orange_v_max" shortname="V_max"/>
+      </dl_settings>
+    </dl_settings>
+  </settings>
+
+  <header>
+    <file name="colorfilter_tijn.h"/>
+  </header>
+
+  <init fun="colorfilter_tijn_init()"/>
+
+  <makefile>
+    <file name="colorfilter_tijn.c"/>
+  </makefile>
+</module>
