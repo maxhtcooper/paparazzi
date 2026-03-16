@@ -1,6 +1,9 @@
 #include "modules/computer_vision/colorfilter_tijn.h"
 #include "modules/computer_vision/cv.h"
 #include <string.h>
+#include "mcu_periph/uart.h"
+#include "pprzlink/messages.h"
+#include "modules/datalink/downlink.h"
 
 // Initialize with YUV values for orange poles
 uint8_t orange_y_min = 105, orange_y_max = 205;
@@ -16,6 +19,10 @@ static uint16_t column_orange_count[MAX_IMG_WIDTH];
 
 struct image_t *colorfilter_tijn_func(struct image_t *img, uint8_t camera_id) {
   // Security: check if the frame is in the expected YUV422 format
+
+  //unusedparameter warning suppression
+  (void)camera_id;
+
   if (img->type != IMAGE_YUV422) {
     return img;
   }
@@ -83,7 +90,8 @@ struct image_t *colorfilter_tijn_func(struct image_t *img, uint8_t camera_id) {
   safe_heading_x = best_gap_start + (best_gap_width / 2);
   // --- END GAP-FINDING LOGIC ---
 
-  // safe_heading_x can now be sent via ABI or telemetry to the navigation module
+ // Transmit the variable to the GCS
+  DOWNLINK_SEND_COLOR_FILTER_OUTPUT(DefaultChannel, DefaultDevice, &safe_heading_x);
   
   return img;
 }
