@@ -59,6 +59,7 @@ static pthread_mutex_t mutex;
 // Filter Settings
 uint8_t test_setting = 0;
 bool test_flag = false;
+uint8_t edge_threshold = 0;
 
 /* The main opticflow variables */
 // we always have 1 active camera
@@ -156,7 +157,7 @@ void optic_flow_detector_periodic(void)
   // COLOR_OBJECT_DETECTION1_ID whic is defined on the Abi level to be 1
   if(opticflow_got_result[0]){
     AbiSendMsgVISUAL_DETECTION(OPTIC_FLOW_VISUAL_DETECTION_ID, local_results[0].flow_x, local_results[0].flow_y,
-        local_results[0].flow_der_x, local_results[0].flow_der_y, 0, 0);
+        local_results[0].flow_der_x, local_results[0].flow_der_y, local_results[0].avg_flow, 0);
     opticflow_got_result[0] = false;
   }
 }

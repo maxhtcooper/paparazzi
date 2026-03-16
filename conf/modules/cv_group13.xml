@@ -9,6 +9,7 @@
     <define name="OPTIC_FLOW_DETECTOR_CAMERA1" value="front_camera|bottom_camera" description="Video device to use"/>
     <define name="OPTIC_FLOW_DETECTOR_FPS1" value="10" description="Desired FPS (0: camera rate)"/>
     <define name="TEST_FLAG" value="FALSE|TRUE" description="To be or not to be"/>
+    <define name="OPTIC_FLOW_EDGE_THRESHOLD" value="30" description="Edge detection threshold"/>
   </doc>
 
   <settings>
@@ -16,6 +17,7 @@
       <dl_settings name="Group13OpticFlow">
          <dl_setting var="test_setting" min="0" step="1" max="255" shortname="t_s"/>
          <dl_setting var="test_flag"  min="0" step="1" max="1" values="False|True" shortname="t_f" />
+         <dl_setting var="edge_threshold"  min="0" step="255" max="1" shortname="e_t" />
       </dl_settings>
     </dl_settings>
   </settings>

@@ -18,6 +18,8 @@
 
 // settings
 extern float oa_color_count_frac;
+extern uint8_t oa_flow_lpf_enable;
+extern float oa_flow_lpf_alpha;
 
 // global variables
 extern int16_t svm_bbox_x;

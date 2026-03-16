@@ -375,6 +375,11 @@ PRINT_CONFIG_VAR(OPTICFLOW_TRACK_BACK_CAMERA2)
 #ifndef OPTICFLOW_SHOW_FLOW_CAMERA2
 #define OPTICFLOW_SHOW_FLOW_CAMERA2 FALSE
 #endif
+
+#ifndef OPTIC_FLOW_EDGE_THRESHOLD
+#define OPTIC_FLOW_EDGE_THRESHOLD 0
+#endif
+
 PRINT_CONFIG_VAR(OPTICFLOW_SHOW_FLOW)
 PRINT_CONFIG_VAR(OPTICFLOW_SHOW_FLOW_CAMERA2)
 
@@ -451,6 +456,7 @@ void opticflow_calc_init(struct opticflow_t opticflow[])
 
   opticflow[0].camera = &OPTICFLOW_CAMERA;
   opticflow[0].id = 0;
+  opticflow[0].edge_threshold = OPTIC_FLOW_EDGE_THRESHOLD;
 
   struct FloatEulers euler_cam1 = {OPTICFLOW_BODY_TO_CAM_PHI, OPTICFLOW_BODY_TO_CAM_THETA, OPTICFLOW_BODY_TO_CAM_PSI};
   float_rmat_of_eulers(&body_to_cam[0], &euler_cam1);
@@ -1077,9 +1083,10 @@ bool calc_edgeflow_tot(struct opticflow_t *opticflow, struct image_t *img,
   // Calculate current frame's edge histogram
   int32_t *edge_hist_x = edge_hist[current_frame_nr].x;
   int32_t *edge_hist_y = edge_hist[current_frame_nr].y;
-  calculate_edge_histogram(img, edge_hist_x, 'x', 0); // horizontal edges
-  calculate_edge_histogram(img, edge_hist_y, 'y', 0); // vertical edges for each row in the image
-
+  calculate_edge_histogram(img, edge_hist_x, 'x', opticflow->edge_threshold); // horizontal edges
+  calculate_edge_histogram(img, edge_hist_y, 'y', opticflow->edge_threshold); // vertical edges for each row in the image
+  // edge hstogram is an array of numbers, indicating the amount of [horizontal / vertical]
+  // edges present in the given [column / row] of the image. 
 
   // Copy frame time and angles of image to calculated edge histogram
   edge_hist[current_frame_nr].frame_time = img->ts;
@@ -1135,6 +1142,8 @@ bool calc_edgeflow_tot(struct opticflow_t *opticflow, struct image_t *img,
   result->flow_x = (int16_t)edgeflow.flow_x / RES;
   result->flow_y = (int16_t)edgeflow.flow_y / RES;
 
+  result->avg_flow = calculate_average_edge_flow(displacement.y, img->h);
+
   //Fill up the results optic flow to be on par with LK_fast9
   result->flow_der_x =  result->flow_x;
   result->flow_der_y =  result->flow_y;
@@ -1179,7 +1188,7 @@ bool calc_edgeflow_tot(struct opticflow_t *opticflow, struct image_t *img,
 
   result->noise_measurement = 0.2;
   if (opticflow->show_flow) {
-    draw_edgeflow_img(img, edgeflow, prev_edge_histogram_y, edge_hist_y);
+    draw_edgeflow_img(img, edgeflow, prev_edge_histogram_y, edge_hist_y, result);
   }
   // Increment and wrap current time frame
   current_frame_nr = (current_frame_nr + 1) % MAX_HORIZON;

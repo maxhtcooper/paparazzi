@@ -12,11 +12,15 @@ The color filter settings are set using the cv_detect_color_object. This module 
 so you have to define which filter to use with the OPTIC_FLOW_VISUAL_DETECTION_ID setting.
     </description>
     <define name="OPTIC_FLOW_VISUAL_DETECTION_ID" value="ABI_BROADCAST" description="which VISUAL_DETECTION message to receive for orange pixel detection."/>
+    <define name="MOTION_GROUP13_FLOW_LPF_ENABLE" value="1" description="Enable (1) or disable (0) low-pass filtering of received avg_flow."/>
+    <define name="MOTION_GROUP13_FLOW_LPF_ALPHA" value="0.20" description="LPF alpha in [0..1] for avg_flow. Lower is smoother, higher is more responsive."/>
   </doc>
     <settings>
     <dl_settings>
       <dl_settings name="OrangeAvoider">
          <dl_setting var="oa_color_count_frac" min="0" step="0.01" max="0.5"/>
+         <dl_setting var="oa_flow_lpf_enable" min="0" step="1" max="1"/>
+         <dl_setting var="oa_flow_lpf_alpha" min="0" step="0.01" max="1"/>
       </dl_settings>
     </dl_settings>
   </settings>

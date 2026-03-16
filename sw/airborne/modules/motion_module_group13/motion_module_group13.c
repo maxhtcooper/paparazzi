@@ -60,15 +60,27 @@ enum navigation_state_t {
   OUT_OF_BOUNDS
 };
 
+#ifndef MOTION_GROUP13_FLOW_LPF_ENABLE
+#define MOTION_GROUP13_FLOW_LPF_ENABLE 1
+#endif
+
+#ifndef MOTION_GROUP13_FLOW_LPF_ALPHA
+#define MOTION_GROUP13_FLOW_LPF_ALPHA 0.20f
+#endif
+
 // define settings  
 float oa_color_count_frac = 0.18f;
+uint8_t oa_flow_lpf_enable = MOTION_GROUP13_FLOW_LPF_ENABLE;
+float oa_flow_lpf_alpha = MOTION_GROUP13_FLOW_LPF_ALPHA;
 
 // define and initialise global variables
 enum navigation_state_t navigation_state = SEARCH_FOR_SAFE_HEADING;
 
 int16_t flow_der_x = 0;
 int16_t flow_der_y = 0;
-int32_t divergence = 0;
+int32_t avg_flow = 0;
+static float avg_flow_lpf_state = 0.f;
+static uint8_t avg_flow_lpf_initialized = 0;
 int32_t color_count = 0;                // orange color count from color filter for obstacle detection
 int16_t obstacle_free_confidence = 0;   // a measure of how certain we are that the way ahead is safe.
 float heading_increment = 50.f;          // heading angle increment [deg]
@@ -91,11 +103,34 @@ static abi_event color_detection_ev;
 static void optic_flow_cb(uint8_t __attribute__((unused)) sender_id,
                                int16_t __attribute__((unused)) flow_x, int16_t __attribute__((unused)) flow_y,
                                int16_t flow_der_x_received, int16_t flow_der_y_received,
-                               int32_t divergence_received, int16_t __attribute__((unused)) extra)
+                               int32_t avg_received, int16_t __attribute__((unused)) extra)
 {
   flow_der_x = flow_der_x_received;
   flow_der_y = flow_der_y_received;
-  divergence = divergence_received;
+
+  if (oa_flow_lpf_enable) {
+    float alpha = oa_flow_lpf_alpha;
+    float avg_received_f = (float)avg_received;
+
+    if (alpha < 0.f) {
+      alpha = 0.f;
+    } else if (alpha > 1.f) {
+      alpha = 1.f;
+    }
+
+    if (!avg_flow_lpf_initialized) {
+      avg_flow_lpf_state = avg_received_f;
+      avg_flow_lpf_initialized = 1;
+    } else {
+      avg_flow_lpf_state += alpha * (avg_received_f - avg_flow_lpf_state);
+    }
+
+    avg_flow = (int32_t)avg_flow_lpf_state;
+  } else {
+    avg_flow = avg_received;
+    avg_flow_lpf_state = (float)avg_received;
+    avg_flow_lpf_initialized = 1;
+  }
 }
 
 
@@ -273,7 +308,7 @@ uint8_t calculateForwards(struct EnuCoor_i *new_coor, float distanceMeters)
   VERBOSE_PRINT("Calculated %f m forward position. x: %f  y: %f based on pos(%f, %f) and heading(%f)\n", distanceMeters,	
                 POS_FLOAT_OF_BFP(new_coor->x), POS_FLOAT_OF_BFP(new_coor->y),
                 stateGetPositionEnu_f()->x, stateGetPositionEnu_f()->y, DegOfRad(heading));
-  VERBOSE_PRINT("RECEIVED parameters: x_dot: %i y_dot: %i  divergence: %i\n", flow_der_x, flow_der_y, divergence);
+  VERBOSE_PRINT("RECEIVED parameters: x_dot: %i y_dot: %i  avg_flow: %i\n", flow_der_x, flow_der_y, avg_flow);
   return false;
 }
 

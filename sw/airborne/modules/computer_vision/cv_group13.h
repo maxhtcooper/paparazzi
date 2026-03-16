@@ -43,6 +43,8 @@ extern uint8_t test_setting;
 
 extern bool test_flag;
 
+extern uint8_t edge_threshold;
+
 // Module functions
 extern void optic_flow_detector_init(void);
 extern void optic_flow_detector_periodic(void);

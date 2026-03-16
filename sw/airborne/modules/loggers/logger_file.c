@@ -47,7 +47,8 @@
 
 extern int16_t flow_der_x;
 extern int16_t flow_der_y;
-extern int32_t divergence;
+// extern int32_t divergence;
+extern int32_t avg_flow;
 extern int16_t obstacle_free_confidence;
 /** Set the default File logger path to the USB drive */
 #ifndef LOGGER_FILE_PATH
@@ -86,7 +87,7 @@ static void logger_file_write_header(FILE *file) {
 
   fprintf(file, "h_ctl_aileron_setpoint,h_ctl_elevator_setpoint");
 #endif
-fprintf(file, "flow_der_x,flow_der_y,divergence,obstacle_free_confidence\n");
+fprintf(file, "flow_der_x,flow_der_y,avg_flow,obstacle_free_confidence\n");
 }
 
 /** Write CSV row
@@ -121,7 +122,7 @@ static void logger_file_write_row(FILE *file) {
 #else
   fprintf(file, "%d,%d\n", h_ctl_aileron_setpoint, h_ctl_elevator_setpoint);
 #endif
-  fprintf(file, "%d,%d,%d,%d\n", flow_der_x, flow_der_y, divergence, obstacle_free_confidence);
+  fprintf(file, "%d,%d,%d,%d\n", flow_der_x, flow_der_y, avg_flow, obstacle_free_confidence);
 }
 
 
