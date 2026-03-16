@@ -1077,8 +1077,8 @@ bool calc_edgeflow_tot(struct opticflow_t *opticflow, struct image_t *img,
   // Calculate current frame's edge histogram
   int32_t *edge_hist_x = edge_hist[current_frame_nr].x;
   int32_t *edge_hist_y = edge_hist[current_frame_nr].y;
-  calculate_edge_histogram(img, edge_hist_x, 'x', 0);
-  calculate_edge_histogram(img, edge_hist_y, 'y', 0);
+  calculate_edge_histogram(img, edge_hist_x, 'x', 0); // horizontal edges
+  calculate_edge_histogram(img, edge_hist_y, 'y', 0); // vertical edges for each row in the image
 
 
   // Copy frame time and angles of image to calculated edge histogram
@@ -1179,7 +1179,7 @@ bool calc_edgeflow_tot(struct opticflow_t *opticflow, struct image_t *img,
 
   result->noise_measurement = 0.2;
   if (opticflow->show_flow) {
-    draw_edgeflow_img(img, edgeflow, prev_edge_histogram_x, edge_hist_x);
+    draw_edgeflow_img(img, edgeflow, prev_edge_histogram_y, edge_hist_y);
   }
   // Increment and wrap current time frame
   current_frame_nr = (current_frame_nr + 1) % MAX_HORIZON;
