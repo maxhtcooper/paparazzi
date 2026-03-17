@@ -4,7 +4,7 @@
 #include "mcu_periph/uart.h"
 #include "pprzlink/messages.h"
 #include "modules/datalink/downlink.h"
-#include "subsystems/abi.h"
+#include "modules/core/abi.h"
 
 // Initialize with YUV values for orange poles
 uint8_t orange_y_min = 105, orange_y_max = 205;

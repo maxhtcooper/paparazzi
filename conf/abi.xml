@@ -276,7 +276,7 @@
     </message>
 
     <message name="COLOR_FILTER_GAP" id="42">
-    <field name="safe_heading_x" type="uint16"/>
+    <field name="safe_heading_x" type="uint16_t"/>
   </message>
 
   </msg_class>
