@@ -4,6 +4,7 @@
 #include "mcu_periph/uart.h"
 #include "pprzlink/messages.h"
 #include "modules/datalink/downlink.h"
+#include "subsystems/abi.h"
 
 // Initialize with YUV values for orange poles
 uint8_t orange_y_min = 105, orange_y_max = 205;
@@ -92,7 +93,8 @@ struct image_t *colorfilter_tijn_func(struct image_t *img, uint8_t camera_id) {
 
  // Transmit the variable to the GCS
   DOWNLINK_SEND_COLOR_FILTER_OUTPUT(DefaultChannel, DefaultDevice, &safe_heading_x);
-  
+  // Publicate to ABI for navigation module
+  AbiSendMsgCOLOR_FILTER_GAP(ABI_BROADCAST, safe_heading_x);
   return img;
 }
 

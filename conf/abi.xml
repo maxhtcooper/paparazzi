@@ -275,6 +275,10 @@
       <field name="actuators_t4_extra_data_in_ptr" type="float *">Pointer pointing at the actuators_t4_extra_data_in array</field>
     </message>
 
+    <message name="COLOR_FILTER_GAP" id="42">
+    <field name="safe_heading_x" type="uint16"/>
+  </message>
+
   </msg_class>
 
 </protocol>
