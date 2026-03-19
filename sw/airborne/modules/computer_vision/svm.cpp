@@ -11,10 +11,10 @@ uint8_t obstacle_detected = 0;
 static cv::Mat previous_gray_middle;
 
 // Trained SVM parameters from scikit-learn
-const float scaler_mean[3] = {0.849761, 0.004354, 4.496045};
-const float scaler_scale[3] = {1.168939, 0.011164, 13.586546};
-const float svm_weights[3] = {2.977097, -0.235010, -2.915282};
-const float svm_intercept = -0.059826;
+const float scaler_mean[3] = {0.849761, 0.004354, 4.496088};
+const float scaler_scale[3] = {1.168942, 0.011164, 13.587011};
+const float svm_weights[3] = {2.977478, -0.235030, -2.915399};
+const float svm_intercept = -0.060160;
 
 extern "C" {
 

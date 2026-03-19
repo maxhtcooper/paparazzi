@@ -12,7 +12,16 @@
   
   <init fun="svm_init()"/>
   
-  <makefile>
+  <makefile target="nps">
+    <raw>
+      nps.CXXFLAGS += -std=c++11
+      nps.CXXFLAGS += $(shell pkg-config --cflags opencv4)
+      nps.LDFLAGS  += $(shell pkg-config --libs opencv4)
+    </raw>
+    <file name="svm.cpp"/>
+  </makefile>
+
+  <makefile target="ap">
     <file name="svm.cpp"/>
     <flag name="CXXFLAGS" value="-std=c++11"/>
     <flag name="LDFLAGS" value="-lopencv_core -lopencv_video -lopencv_imgproc"/>

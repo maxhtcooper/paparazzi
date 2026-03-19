@@ -14,7 +14,8 @@
 #define ORANGE_AVOIDER_H
 
 // settings
-extern float oa_color_count_frac;
+extern float heading_increment;
+extern float forward_distance;
 
 // functions
 extern void motion_module_group13_init(void);
