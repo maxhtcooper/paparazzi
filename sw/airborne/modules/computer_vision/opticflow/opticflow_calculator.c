@@ -403,6 +403,17 @@ static inline float get_agl_scale(void)
   return 1.0f;
 }
 
+static inline float normalize_angle_rad(float angle)
+{
+  while (angle > M_PI) {
+    angle -= (2.f * M_PI);
+  }
+  while (angle < -M_PI) {
+    angle += (2.f * M_PI);
+  }
+  return angle;
+}
+
 /* Functions only used here */
 static uint32_t timeval_diff(struct timeval *starttime, struct timeval *finishtime);
 static int cmp_flow(const void *a, const void *b);
@@ -544,12 +555,13 @@ bool calc_fast9_lukas_kanade(struct opticflow_t *opticflow, struct image_t *img,
   struct linear_flow_fit_info fit_info;
 
   // Update FPS for information
-  float dt = timeval_diff(&(opticflow->prev_img_gray.ts), &(img->ts));
-  if (dt > 1e-5) {
-    result->fps = 1000.f / dt;
+  float dt_ms = timeval_diff(&(opticflow->prev_img_gray.ts), &(img->ts));
+  if (dt_ms > 1e-5) {
+    result->fps = 1000.f / dt_ms;
   } else {
     return false;
   }
+  float dt_s = dt_ms * 1e-3f;
 
   // *************************************************************************************
   // Corner detection
@@ -746,25 +758,32 @@ bool calc_fast9_lukas_kanade(struct opticflow_t *opticflow, struct image_t *img,
   // Flow Derotation
   // ***************
 
+  result->flow_der_x = result->flow_x;
+  result->flow_der_y = result->flow_y;
+
   float diff_flow_x = 0.f;
   float diff_flow_y = 0.f;
+  bool high_rotation = false;
 
   if (opticflow->derotation && result->tracked_cnt > 5) {
 
-    float rotation_threshold = M_PI / 180.0f;
-    if (fabs(opticflow->img_gray.eulers.phi - opticflow->prev_img_gray.eulers.phi) > rotation_threshold
-        || fabs(opticflow->img_gray.eulers.theta - opticflow->prev_img_gray.eulers.theta) > rotation_threshold) {
+    float phi_diff = normalize_angle_rad(opticflow->img_gray.eulers.phi - opticflow->prev_img_gray.eulers.phi);
+    float theta_diff = normalize_angle_rad(opticflow->img_gray.eulers.theta - opticflow->prev_img_gray.eulers.theta);
+    float psi_diff = normalize_angle_rad(opticflow->img_gray.eulers.psi - opticflow->prev_img_gray.eulers.psi);
+
+    float roll_pitch_threshold = M_PI / 180.0f;
+    float yaw_rate_threshold = 1.5f;
+    high_rotation = (fabsf(phi_diff) > roll_pitch_threshold)
+                    || (fabsf(theta_diff) > roll_pitch_threshold)
+                    || (dt_s > 1e-4f && (fabsf(psi_diff) / dt_s) > yaw_rate_threshold);
+
+    if (high_rotation) {
 
       // do not apply the derotation if the rotation rates are too high:
       result->flow_der_x = 0.0f;
       result->flow_der_y = 0.0f;
 
     } else {
-
-      // determine the roll, pitch, yaw differences between the images.
-      float phi_diff = opticflow->img_gray.eulers.phi - opticflow->prev_img_gray.eulers.phi;
-      float theta_diff = opticflow->img_gray.eulers.theta - opticflow->prev_img_gray.eulers.theta;
-      float psi_diff = opticflow->img_gray.eulers.psi - opticflow->prev_img_gray.eulers.psi;
 
       if (strcmp(opticflow->camera->dev_name, bottom_camera.dev_name) == 0) {
         // bottom cam: just subtract a scaled version of the roll and pitch difference from the global flow vector:
@@ -786,9 +805,13 @@ bool calc_fast9_lukas_kanade(struct opticflow_t *opticflow, struct image_t *img,
         }
 
         for (int i = 0; i < result->tracked_cnt; i++) {
-          // subtract the flow:
-          vectors[i].flow_x -= predicted_flow_vectors[i].flow_x;
-          vectors[i].flow_y -= predicted_flow_vectors[i].flow_y;
+          if (predicted_flow_vectors[i].error < LARGE_FLOW_ERROR && vectors[i].error < LARGE_FLOW_ERROR) {
+            // subtract the flow:
+            vectors[i].flow_x -= predicted_flow_vectors[i].flow_x;
+            vectors[i].flow_y -= predicted_flow_vectors[i].flow_y;
+          } else {
+            vectors[i].error = LARGE_FLOW_ERROR;
+          }
         }
 
         // vectors have to be re-sorted after derotation:
@@ -803,6 +826,7 @@ bool calc_fast9_lukas_kanade(struct opticflow_t *opticflow, struct image_t *img,
           result->flow_der_x = (vectors[result->tracked_cnt / 2 - 1].flow_x + vectors[result->tracked_cnt / 2].flow_x) / 2.f;
           result->flow_der_y = (vectors[result->tracked_cnt / 2 - 1].flow_y + vectors[result->tracked_cnt / 2].flow_y) / 2.f;
         }
+        free(predicted_flow_vectors);
       }
     }
   }
@@ -828,6 +852,11 @@ bool calc_fast9_lukas_kanade(struct opticflow_t *opticflow, struct image_t *img,
   //TODO develop a noise model based on groundtruth
   //result->noise_measurement = 1 - (float)result->tracked_cnt / ((float)opticflow->max_track_corners * 1.25f);
   result->noise_measurement = 0.25;
+  if (high_rotation) {
+    result->noise_measurement = 2.0;
+  } else if (result->tracked_cnt < 8) {
+    result->noise_measurement = 1.0;
+  }
 
   // *************************************************************************************
   // Next Loop Preparation
@@ -1046,11 +1075,27 @@ bool calc_edgeflow_tot(struct opticflow_t *opticflow, struct image_t *img,
   static uint8_t current_frame_nr = 0;
   struct edge_flow_t edgeflow;
   static uint8_t previous_frame_offset[2] = {1, 1};
+  static int32_t *displacement_x = NULL;
+  static int32_t *displacement_y = NULL;
+  static uint16_t displacement_w = 0;
+  static uint16_t displacement_h = 0;
 
   // Define Normal variables
   struct edgeflow_displacement_t displacement;
-  displacement.x = calloc(img->w, sizeof(int32_t));
-  displacement.y = calloc(img->h, sizeof(int32_t));
+  if (displacement_x == NULL || displacement_w != img->w) {
+    free(displacement_x);
+    displacement_x = calloc(img->w, sizeof(int32_t));
+    displacement_w = img->w;
+  }
+  if (displacement_y == NULL || displacement_h != img->h) {
+    free(displacement_y);
+    displacement_y = calloc(img->h, sizeof(int32_t));
+    displacement_h = img->h;
+  }
+  memset(displacement_x, 0, img->w * sizeof(int32_t));
+  memset(displacement_y, 0, img->h * sizeof(int32_t));
+  displacement.x = displacement_x;
+  displacement.y = displacement_y;
   // If the methods just switched to this one, reintialize the
   // array of edge_hist structure.
   if (opticflow->just_switched_method == 1 && edge_hist[0].x == NULL) {
@@ -1192,9 +1237,6 @@ bool calc_edgeflow_tot(struct opticflow_t *opticflow, struct image_t *img,
   }
   // Increment and wrap current time frame
   current_frame_nr = (current_frame_nr + 1) % MAX_HORIZON;
-  // Free alloc'd variables
-  free(displacement.x);
-  free(displacement.y);
   return true;
 }
 

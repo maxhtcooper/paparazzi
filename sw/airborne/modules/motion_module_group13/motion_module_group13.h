@@ -17,7 +17,11 @@
 #include <stdint.h>
 
 // settings
-extern float oa_color_count_frac;
+extern float oa_hist_flow_threshold;
+extern float oa_hist_flow_clear_threshold;
+extern float oa_min_forward_distance;
+extern float oa_gap_balance_threshold;
+extern float oa_emergency_flow_threshold;
 extern uint8_t oa_flow_lpf_enable;
 extern float oa_flow_lpf_alpha;
 

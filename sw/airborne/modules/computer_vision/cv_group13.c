@@ -145,8 +145,13 @@ void optic_flow_detector_periodic(void)
   // copy it to a local variable before sending it to the rest of the system
   // to not block the video thread for too long
   static struct opticflow_result_t local_results[1];
+  bool have_new_result = false;
   pthread_mutex_lock(&mutex);
-  memcpy(local_results, opticflow_result, 1*sizeof(struct opticflow_result_t));
+  if (opticflow_got_result[0]) {
+    memcpy(local_results, opticflow_result, 1*sizeof(struct opticflow_result_t));
+    opticflow_got_result[0] = false;
+    have_new_result = true;
+  }
   pthread_mutex_unlock(&mutex);
 
   // updated flag comes from the video thread, which sets it to true
@@ -155,9 +160,8 @@ void optic_flow_detector_periodic(void)
 
   // OPTIC_FLOW_VISUAL_DETECTION_ID is defined in the XML to be
   // COLOR_OBJECT_DETECTION1_ID whic is defined on the Abi level to be 1
-  if(opticflow_got_result[0]){
+  if (have_new_result) {
     AbiSendMsgVISUAL_DETECTION(OPTIC_FLOW_VISUAL_DETECTION_ID, local_results[0].flow_x, local_results[0].flow_y,
         local_results[0].flow_der_x, local_results[0].flow_der_y, local_results[0].avg_flow, 0);
-    opticflow_got_result[0] = false;
   }
 }

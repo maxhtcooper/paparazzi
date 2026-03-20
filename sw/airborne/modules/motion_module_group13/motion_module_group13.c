@@ -9,12 +9,9 @@
  * @author Roland Meertens
  * Example on how to use the colours detected to avoid orange pole in the cyberzoo
  * This module is an example module for the course AE4317 Autonomous Flight of Micro Air Vehicles at the TU Delft.
- * This module is used in combination with a color filter (cv_detect_color_object) and the navigation mode of the autopilot.
- * The avoidance strategy is to simply count the total number of orange pixels. When above a certain percentage threshold,
- * (given by color_count_frac) we assume that there is an obstacle and we turn.
- *
- * The color filter settings are set using the cv_detect_color_object. This module can run multiple filters simultaneously
- * so you have to define which filter to use with the ORANGE_AVOIDER_VISUAL_DETECTION_ID setting.
+ * This module is used with cv_group13 optical flow output and the navigation mode of the autopilot.
+ * The avoidance strategy uses only the optical-flow histogram signal (avg_flow).
+ * When |avg_flow| exceeds a threshold, we assume there is an obstacle and turn away.
  */
 
 #include "modules/motion_module_group13/motion_module_group13.h"
@@ -68,8 +65,32 @@ enum navigation_state_t {
 #define MOTION_GROUP13_FLOW_LPF_ALPHA 0.20f
 #endif
 
+#ifndef MOTION_GROUP13_HIST_FLOW_THRESHOLD
+#define MOTION_GROUP13_HIST_FLOW_THRESHOLD 50.f
+#endif
+
+#ifndef MOTION_GROUP13_HIST_FLOW_CLEAR_THRESHOLD
+#define MOTION_GROUP13_HIST_FLOW_CLEAR_THRESHOLD 25.f
+#endif
+
+#ifndef MOTION_GROUP13_MIN_FORWARD_DISTANCE
+#define MOTION_GROUP13_MIN_FORWARD_DISTANCE 0.35f
+#endif
+
+#ifndef MOTION_GROUP13_GAP_BALANCE_THRESHOLD
+#define MOTION_GROUP13_GAP_BALANCE_THRESHOLD 20.f
+#endif
+
+#ifndef MOTION_GROUP13_EMERGENCY_FLOW_THRESHOLD
+#define MOTION_GROUP13_EMERGENCY_FLOW_THRESHOLD 160.f
+#endif
+
 // define settings  
-float oa_color_count_frac = 0.18f;
+float oa_hist_flow_threshold = MOTION_GROUP13_HIST_FLOW_THRESHOLD;
+float oa_hist_flow_clear_threshold = MOTION_GROUP13_HIST_FLOW_CLEAR_THRESHOLD;
+float oa_min_forward_distance = MOTION_GROUP13_MIN_FORWARD_DISTANCE;
+float oa_gap_balance_threshold = MOTION_GROUP13_GAP_BALANCE_THRESHOLD;
+float oa_emergency_flow_threshold = MOTION_GROUP13_EMERGENCY_FLOW_THRESHOLD;
 uint8_t oa_flow_lpf_enable = MOTION_GROUP13_FLOW_LPF_ENABLE;
 float oa_flow_lpf_alpha = MOTION_GROUP13_FLOW_LPF_ALPHA;
 
@@ -81,7 +102,6 @@ int16_t flow_der_y = 0;
 int32_t avg_flow = 0;
 static float avg_flow_lpf_state = 0.f;
 static uint8_t avg_flow_lpf_initialized = 0;
-int32_t color_count = 0;                // orange color count from color filter for obstacle detection
 int16_t obstacle_free_confidence = 0;   // a measure of how certain we are that the way ahead is safe.
 float heading_increment = 50.f;          // heading angle increment [deg]
 float maxDistance = 2.25;               // max waypoint displacement [m]
@@ -152,7 +172,6 @@ static void svm_detection_cb(uint8_t __attribute__((unused)) sender_id,
   svm_bbox_height = pixel_height;
 }
 
-extern struct video_config_t front_camera;
 static struct video_listener *my_video_listener;
 
 // --- 3. SVM DRAWING FUNCTION ---
@@ -175,7 +194,7 @@ static struct image_t * draw_svm_bounding_box(struct image_t *img, uint8_t camer
   return img;
 }
 /*
- * Initialisation function, setting the colour filter, random seed and heading_increment
+ * Initialisation function, setting random seed and heading increment
  */
 void motion_module_group13_init(void)
 {
@@ -183,7 +202,7 @@ void motion_module_group13_init(void)
   srand(time(NULL));
   chooseRandomIncrementAvoidance();
 
-  // bind our colorfilter callbacks to receive the color filter outputs
+  // bind callback to receive optical-flow outputs
   AbiBindMsgVISUAL_DETECTION(OPTIC_FLOW_VISUAL_DETECTION_ID, &color_detection_ev, optic_flow_cb);
 }
 
@@ -197,22 +216,87 @@ void motion_module_group13_periodic(void)
     return;
   }
 
-  // compute current color thresholds
-  int32_t color_count_threshold = oa_color_count_frac * front_camera.output_size.w * front_camera.output_size.h;
+  int32_t abs_avg_flow = (avg_flow >= 0) ? avg_flow : -avg_flow;
+  int32_t abs_flow_der_x = (flow_der_x >= 0) ? flow_der_x : -flow_der_x;
+  int32_t abs_flow_der_y = (flow_der_y >= 0) ? flow_der_y : -flow_der_y;
+  float abs_avg_flow_f = (float)abs_avg_flow;
+  float flow_mag_f = (float)(abs_flow_der_x + abs_flow_der_y);
 
-  VERBOSE_PRINT("Color_count: %d  threshold: %d state: %d \n", color_count, color_count_threshold, navigation_state);
+  // keep a valid hysteresis band: clear threshold must be below obstacle threshold
+  if (oa_hist_flow_clear_threshold >= oa_hist_flow_threshold) {
+    oa_hist_flow_clear_threshold = oa_hist_flow_threshold * 0.6f;
+  }
+  if (oa_gap_balance_threshold >= oa_hist_flow_threshold) {
+    oa_gap_balance_threshold = oa_hist_flow_threshold * 0.5f;
+  }
+  if (oa_emergency_flow_threshold <= oa_hist_flow_threshold) {
+    oa_emergency_flow_threshold = oa_hist_flow_threshold * 1.8f;
+  }
 
-  // update our safe confidence using color threshold
-  if(color_count < color_count_threshold){
+  uint8_t obstacle_detected = (flow_mag_f >= oa_hist_flow_threshold);
+  uint8_t path_clear = (flow_mag_f <= oa_hist_flow_clear_threshold);
+  // corridor_open means "close flow exists, but left-right imbalance is small"
+  uint8_t corridor_open = (obstacle_detected && abs_avg_flow_f <= oa_gap_balance_threshold);
+  uint8_t emergency_close = (flow_mag_f >= oa_emergency_flow_threshold);
+
+  VERBOSE_PRINT("avg_flow: %ld flow_mag: %.1f close_th: %.1f clear_th: %.1f gap_th: %.1f state: %d\n",
+                (long)avg_flow, flow_mag_f, oa_hist_flow_threshold,
+                oa_hist_flow_clear_threshold, oa_gap_balance_threshold, navigation_state);
+
+  // update confidence with hysteresis around flow peaks
+  if (path_clear || corridor_open) {
     obstacle_free_confidence++;
-  } else {
-    obstacle_free_confidence -= 2;  // be more cautious with positive obstacle detections
+  } else if (obstacle_detected) {
+    obstacle_free_confidence -= emergency_close ? 3 : 2;  // be more cautious with strong positive obstacle detections
+
+    // avg_flow > 0 indicates stronger edge flow on the left side than right side.
+    // Turn away from the denser side.
+    float turn_base_deg = corridor_open ? 2.0f : 5.f;
+    float turn_gain_deg = corridor_open ? 8.f : 15.f;
+    if (emergency_close) {
+      turn_base_deg += 3.f;
+      turn_gain_deg += 8.f;
+    }
+    float peak_ratio = (flow_mag_f - oa_hist_flow_threshold) / (oa_hist_flow_threshold + 1.f);
+    Bound(peak_ratio, 0.f, 1.5f);
+    float turn_increment = turn_base_deg + turn_gain_deg * peak_ratio;
+
+    if (avg_flow > 0) {
+      heading_increment = -turn_increment;
+    } else if (avg_flow < 0) {
+      heading_increment = turn_increment;
+    } else {
+      chooseRandomIncrementAvoidance();
+    }
   }
 
   // bound obstacle_free_confidence
   Bound(obstacle_free_confidence, 0, max_trajectory_confidence);
 
-  float moveDistance = fminf(maxDistance, 0.2f * obstacle_free_confidence);
+  float moveDistance;
+  if (path_clear) {
+    moveDistance = maxDistance;
+  } else if (corridor_open) {
+    // Close flow but balanced side-to-side: advance through the gap.
+    float symmetry = 1.f - (abs_avg_flow_f / (oa_gap_balance_threshold + 1.f));
+    Bound(symmetry, 0.f, 1.f);
+    moveDistance = oa_min_forward_distance +
+                   symmetry * (0.8f * maxDistance - oa_min_forward_distance);
+  } else if (obstacle_detected) {
+    moveDistance = emergency_close ? (oa_min_forward_distance * 0.7f) : oa_min_forward_distance;
+  } else {
+    // Between clear and close thresholds: interpolate forward step.
+    float clear_to_close = (oa_hist_flow_threshold - flow_mag_f) /
+                           (oa_hist_flow_threshold - oa_hist_flow_clear_threshold);
+    Bound(clear_to_close, 0.f, 1.f);
+    moveDistance = oa_min_forward_distance +
+                   clear_to_close * (maxDistance - oa_min_forward_distance);
+  }
+
+  // confidence can still gently reduce stride if recent history is uncertain
+  float confidence_scale = 0.5f + 0.1f * obstacle_free_confidence;
+  Bound(confidence_scale, 0.5f, 1.f);
+  moveDistance *= confidence_scale;
 
   switch (navigation_state){
     case SAFE:
@@ -220,7 +304,7 @@ void motion_module_group13_periodic(void)
       moveWaypointForward(WP_TRAJECTORY, 1.5f * moveDistance);
       if (!InsideObstacleZone(WaypointX(WP_TRAJECTORY),WaypointY(WP_TRAJECTORY))){
         navigation_state = OUT_OF_BOUNDS;
-      } else if (obstacle_free_confidence == 0){
+      } else if (obstacle_detected && !corridor_open) {
         navigation_state = OBSTACLE_FOUND;
       } else {
         moveWaypointForward(WP_GOAL, moveDistance);
@@ -228,12 +312,10 @@ void motion_module_group13_periodic(void)
 
       break;
     case OBSTACLE_FOUND:
-      // stop
-      waypoint_move_here_2d(WP_GOAL);
-      waypoint_move_here_2d(WP_TRAJECTORY);
-
-      // randomly select new search direction
-      chooseRandomIncrementAvoidance();
+      // Keep moving while turning away, instead of stopping in place.
+      increase_nav_heading(heading_increment);
+      moveWaypointForward(WP_TRAJECTORY, 1.2f * moveDistance);
+      moveWaypointForward(WP_GOAL, 0.6f * moveDistance);
 
       navigation_state = SEARCH_FOR_SAFE_HEADING;
 
@@ -241,8 +323,16 @@ void motion_module_group13_periodic(void)
     case SEARCH_FOR_SAFE_HEADING:
       increase_nav_heading(heading_increment);
 
+      // keep progressing while searching: through open corridors and non-critical zones.
+      if (!emergency_close || corridor_open) {
+        moveWaypointForward(WP_TRAJECTORY, moveDistance);
+        moveWaypointForward(WP_GOAL, moveDistance * 0.7f);
+      } else {
+        moveWaypointForward(WP_TRAJECTORY, oa_min_forward_distance * 0.6f);
+      }
+
       // make sure we have a couple of good readings before declaring the way safe
-      if (obstacle_free_confidence >= 2){
+      if (obstacle_free_confidence >= 2 && (!obstacle_detected || corridor_open)) {
         navigation_state = SAFE;
       }
       break;

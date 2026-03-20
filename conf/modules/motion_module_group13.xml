@@ -4,21 +4,27 @@
   <doc>
     <description>
 This module is an example module for the course AE4317 Autonomous Flight of Micro Air Vehicles at the TU Delft.
-This module is used in combination with a color filter (cv_detect_color_object) and the navigation mode of the autopilot.
-The avoidance strategy is to simply count the total number of orange pixels. When above a certain percentage threshold,
-(given by color_count_frac) we assume that there is an obstacle and we turn.
-
-The color filter settings are set using the cv_detect_color_object. This module can run multiple filters simultaneously
-so you have to define which filter to use with the OPTIC_FLOW_VISUAL_DETECTION_ID setting.
+This module is used with cv_group13 optical flow output and the navigation mode of the autopilot.
+The avoidance strategy is based purely on the optical-flow histogram signal (avg_flow).
+When the absolute value of avg_flow exceeds a threshold, we assume an obstacle is present and turn away.
     </description>
-    <define name="OPTIC_FLOW_VISUAL_DETECTION_ID" value="ABI_BROADCAST" description="which VISUAL_DETECTION message to receive for orange pixel detection."/>
+    <define name="OPTIC_FLOW_VISUAL_DETECTION_ID" value="ABI_BROADCAST" description="Which VISUAL_DETECTION message to receive for optical-flow outputs."/>
+    <define name="MOTION_GROUP13_HIST_FLOW_THRESHOLD" value="50" description="Absolute avg_flow threshold above which an obstacle is considered close."/>
+    <define name="MOTION_GROUP13_HIST_FLOW_CLEAR_THRESHOLD" value="25" description="Absolute avg_flow threshold below which path is considered clear enough to fly forward."/>
+    <define name="MOTION_GROUP13_MIN_FORWARD_DISTANCE" value="0.35" description="Minimum forward waypoint step when peaks are near but not critical."/>
+    <define name="MOTION_GROUP13_GAP_BALANCE_THRESHOLD" value="20" description="If |avg_flow| is below this while close flow exists, treat as two-side peaks with a gap ahead."/>
+    <define name="MOTION_GROUP13_EMERGENCY_FLOW_THRESHOLD" value="160" description="Very close flow level that triggers stronger evasive turning and reduced forward step."/>
     <define name="MOTION_GROUP13_FLOW_LPF_ENABLE" value="1" description="Enable (1) or disable (0) low-pass filtering of received avg_flow."/>
     <define name="MOTION_GROUP13_FLOW_LPF_ALPHA" value="0.20" description="LPF alpha in [0..1] for avg_flow. Lower is smoother, higher is more responsive."/>
   </doc>
     <settings>
     <dl_settings>
-      <dl_settings name="OrangeAvoider">
-         <dl_setting var="oa_color_count_frac" min="0" step="0.01" max="0.5"/>
+      <dl_settings name="FlowAvoider">
+         <dl_setting var="oa_hist_flow_threshold" min="1" step="1" max="1000"/>
+        <dl_setting var="oa_hist_flow_clear_threshold" min="1" step="1" max="1000"/>
+        <dl_setting var="oa_min_forward_distance" min="0.1" step="0.05" max="2.0"/>
+        <dl_setting var="oa_gap_balance_threshold" min="1" step="1" max="500"/>
+        <dl_setting var="oa_emergency_flow_threshold" min="10" step="5" max="2000"/>
          <dl_setting var="oa_flow_lpf_enable" min="0" step="1" max="1"/>
          <dl_setting var="oa_flow_lpf_alpha" min="0" step="0.01" max="1"/>
       </dl_settings>

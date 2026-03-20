@@ -61,11 +61,19 @@
     </module>
     <module name="cv_group13">
       <define name="OPTIC_FLOW_DETECTOR_CAMERA1" value="front_camera"/>
-      <define name="OPTIC_FLOW_DETECTOR_FPS1" value="10"/>
+      <define name="OPTIC_FLOW_DETECTOR_FPS1" value="15"/>
+      <define name="OPTIC_FLOW_EDGE_THRESHOLD" value="35"/>
       <define name="TEST_FLAG" value="0"/>
     </module>
     <module name="motion_module_group13">
       <define name="OPTIC_FLOW_VISUAL_DETECTION_ID" value="COLOR_OBJECT_DETECTION1_ID"/>
+      <define name="MOTION_GROUP13_HIST_FLOW_THRESHOLD" value="110"/>
+      <define name="MOTION_GROUP13_HIST_FLOW_CLEAR_THRESHOLD" value="60"/>
+      <define name="MOTION_GROUP13_MIN_FORWARD_DISTANCE" value="0.75"/>
+      <define name="MOTION_GROUP13_GAP_BALANCE_THRESHOLD" value="55"/>
+      <define name="MOTION_GROUP13_EMERGENCY_FLOW_THRESHOLD" value="240"/>
+      <define name="MOTION_GROUP13_FLOW_LPF_ENABLE" value="1"/>
+      <define name="MOTION_GROUP13_FLOW_LPF_ALPHA" value="0.16"/>
     </module>
     <module name="video_rtp_stream">
       <define name="VIEWVIDEO_CAMERA" value="front_camera"/>
