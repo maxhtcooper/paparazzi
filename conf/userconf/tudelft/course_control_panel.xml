@@ -60,7 +60,6 @@
         <arg flag="-n"/>
       </program>
       <program name="PprzGCS">
-        <arg flag="--speech"/>
       </program>
       <program name="Joystick">
         <arg flag="-ac" constant="@AIRCRAFT"/>

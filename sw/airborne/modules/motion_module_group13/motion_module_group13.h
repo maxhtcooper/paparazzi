@@ -18,12 +18,14 @@
 
 // settings
 extern float oa_hist_flow_threshold;
-extern float oa_hist_flow_clear_threshold;
 extern float oa_min_forward_distance;
-extern float oa_gap_balance_threshold;
-extern float oa_emergency_flow_threshold;
 extern uint8_t oa_flow_lpf_enable;
 extern float oa_flow_lpf_alpha;
+extern uint8_t reset_confidence_level;
+extern uint8_t max_trajectory_confidence;
+extern float turn_base_deg;
+extern float turn_gain_deg;
+extern float max_distance;
 
 // global variables
 extern int16_t svm_bbox_x;

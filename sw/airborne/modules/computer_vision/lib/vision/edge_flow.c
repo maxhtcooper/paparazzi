@@ -308,6 +308,51 @@ int32_t calculate_average_edge_flow(int32_t *displacement, uint16_t hist_size)
 }
 
 /**
+ * Downsample edge_hist_y into 8 bins and return a byte mask.
+ * Bit i corresponds to bin i (0 = top of image, 7 = bottom).
+ * The two bins with the lowest edge sum are set to 0, all others to 1.
+ */
+uint8_t calculate_sparse_edge_bins_byte(int32_t *edge_hist_y, uint16_t hist_size)
+{
+  if (edge_hist_y == NULL || hist_size == 0) {
+    return 0xFF;
+  }
+
+  uint16_t bin_size = hist_size / 8;
+  uint16_t bins[8] = {0};
+
+  for (uint16_t i = 0; i < hist_size; i++) {
+    uint8_t bin_index = i / bin_size;
+    if (bin_index >= 8) bin_index = 7;
+    bins[bin_index] += edge_hist_y[i];
+  }
+
+  uint16_t min1 = UINT16_MAX, min2 = UINT16_MAX;
+  uint8_t min1_idx = 0, min2_idx = 0;
+
+  for (uint8_t i = 0; i < 8; i++) {
+      if (bins[i] < min1) {
+          min2 = min1;
+          min2_idx = min1_idx;
+
+          min1 = bins[i];
+          min1_idx = i;
+      } else if (bins[i] < min2) {
+          min2 = bins[i];
+          min2_idx = i;
+      }
+  }
+
+  uint8_t mask = 0xFF;
+
+  // Clear the two bits
+  mask &= ~(1 << (7 - min1_idx));
+  mask &= ~(1 << (7 - min2_idx));
+
+  return mask;
+}
+
+/**
  * Draws edgehistogram, displacement and linefit directly on the image for debugging (only for edgeflow in horizontal direction!!)
  * @param[out] *img The image structure where will be drawn on
  * @param[in] edgeflow Information structure for flow information

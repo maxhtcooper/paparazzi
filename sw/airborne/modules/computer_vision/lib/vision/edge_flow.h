@@ -94,6 +94,7 @@ void calculate_edge_displacement(int32_t *edge_histogram, int32_t *edge_histogra
                                  uint8_t window, uint8_t disp_range, int32_t der_shift);
 
 int32_t calculate_average_edge_flow(int32_t *edge_hist, uint16_t hist_size);
+uint8_t calculate_sparse_edge_bins_byte(int32_t *edge_hist_y, uint16_t hist_size);
 // Local assisting functions (only used here)
 // TODO: find a way to incorperate/find these functions in paparazzi
 uint32_t timeval_diff2(struct timeval *starttime, struct timeval *finishtime);

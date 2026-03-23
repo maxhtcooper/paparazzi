@@ -162,6 +162,6 @@ void optic_flow_detector_periodic(void)
   // COLOR_OBJECT_DETECTION1_ID whic is defined on the Abi level to be 1
   if (have_new_result) {
     AbiSendMsgVISUAL_DETECTION(OPTIC_FLOW_VISUAL_DETECTION_ID, local_results[0].flow_x, local_results[0].flow_y,
-        local_results[0].flow_der_x, local_results[0].flow_der_y, local_results[0].avg_flow, 0);
+        local_results[0].flow_der_x, local_results[0].sparse_edge_bins, local_results[0].avg_flow, 0);
   }
 }

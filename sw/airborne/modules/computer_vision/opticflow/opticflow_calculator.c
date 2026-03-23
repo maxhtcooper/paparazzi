@@ -1188,6 +1188,7 @@ bool calc_edgeflow_tot(struct opticflow_t *opticflow, struct image_t *img,
   result->flow_y = (int16_t)edgeflow.flow_y / RES;
 
   result->avg_flow = calculate_average_edge_flow(displacement.y, img->h);
+  result->sparse_edge_bins = calculate_sparse_edge_bins_byte(edge_hist_y, img->h);
 
   //Fill up the results optic flow to be on par with LK_fast9
   result->flow_der_x =  result->flow_x;
