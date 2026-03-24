@@ -148,7 +148,9 @@ So the idea is to turn towards them. Since there is two, turn towards the one wh
 
 The edge flow is then used to give some depth to the 2D information stored in the sparse_bin. It might be that
 an area is qualified as safe to go to but when going there we get a large edge flow bias, meaning that there is an
-obstacle incoming from the left or the right. In this case we turn. Hopefully this way we keep a distance from objects
+obstacle incoming from the left or the right. In this case we turn. Hopefully this way we keep a distance from objects.
+Based on my experience in the sim it kinda works but then sometimes doesn't. If it's there already it
+might as well be helpful in some cases at least
 
 */
 //////////
