@@ -16,8 +16,8 @@ When the absolute value of avg_flow exceeds a threshold, we assume an obstacle i
     <define name="MOTION_GROUP13_EMERGENCY_FLOW_THRESHOLD" value="160" description="Very close flow level that triggers stronger evasive turning and reduced forward step."/>
     <define name="MOTION_GROUP13_FLOW_LPF_ENABLE" value="1" description="Enable (1) or disable (0) low-pass filtering of received avg_flow."/>
     <define name="MOTION_GROUP13_FLOW_LPF_ALPHA" value="0.12" description="LPF alpha in [0..1] for avg_flow. Lower is smoother, higher is more responsive."/>
-    <define name="RESET_CONFIDENCE_LEVEL" value="5" description=""/>
-    <define name="MAX_CONFIDENCE_LEVEL" value="10" description=""/>
+    <define name="RESET_CONFIDENCE_LEVEL" value="8" description=""/>
+    <define name="MAX_CONFIDENCE_LEVEL" value="11" description=""/>
     <define name="TURN_BASE_DEG" value="12" description=""/>
     <define name="TURN_GAIN_DEG" value="0.05" description=""/>
     <define name="MAX_DIST" value="0.8" description=""/>

@@ -75,12 +75,12 @@ enum navigation_state_t {
 #define MOTION_GROUP13_MIN_FORWARD_DISTANCE 0.35f
 #endif
 
-#ifndef MAX_CONFIDENCE_LEVEL
-#define MAX_CONFIDENCE_LEVEL 10
+#ifndef RESET_CONFIDENCE_LEVEL
+#define RESET_CONFIDENCE_LEVEL 8
 #endif
 
-#ifndef RESET_CONFIDENCE_LEVEL
-#define RESET_CONFIDENCE_LEVEL 10
+#ifndef MAX_CONFIDENCE_LEVEL
+#define MAX_CONFIDENCE_LEVEL 11
 #endif
 
 #ifndef TURN_BASE_DEG
@@ -95,18 +95,27 @@ enum navigation_state_t {
 #define MAX_DIST 0.8f
 #endif
 
-// define settings  
+// define settings 
+// This defines the threshold for the absolute value of the edge flow to count as a potential obstacle
+// The rationnale is that objects close by will produce larger edge flow
 float oa_hist_flow_threshold = MOTION_GROUP13_HIST_FLOW_THRESHOLD;
+// The minimum distance the drone makes on a straight line segment
 float oa_min_forward_distance = MOTION_GROUP13_MIN_FORWARD_DISTANCE;
+// max distance the drone makes on a straight line segment
+float max_distance = MAX_DIST;
+// flag for LPF of the average (signed) edge flow
 uint8_t oa_flow_lpf_enable = MOTION_GROUP13_FLOW_LPF_ENABLE;
+// parameter for the LPF
 float oa_flow_lpf_alpha = MOTION_GROUP13_FLOW_LPF_ALPHA;
+// amount of degrees to turn (constant part) when decided so based on edge flow obstacles
 float turn_base_deg = TURN_BASE_DEG;
+// gain for non constant part of degrees to turn for the same reason as above
 float turn_gain_deg = TURN_GAIN_DEG;
-float max_distance = MAX_DIST;               // max waypoint displacement [m]
 
 // define and initialise global variables
 enum navigation_state_t navigation_state = SAFE;
 
+// initialize variables
 int32_t avg_flow = 0;
 uint8_t sparse_bin;
 static float avg_flow_lpf_state = 0.f;
@@ -114,22 +123,36 @@ static uint8_t avg_flow_lpf_initialized = 0;
 static float straight_section_heading = 0.f;
 static uint8_t straight_section_heading_initialized = 0;
 int16_t obstacle_free_confidence = 0;   // a measure of how certain we are that the way ahead is safe.
-float heading_increment = 50.f;          // heading angle increment [deg]
+float heading_increment = 0.f;          // heading angle increment [deg]
 float oob_hdg_incr_deg = 30.f;
 
+// the confidence level decreases on positive obstacle detections. Since the obstacle detection is noisy
+// and eventually results in the drone turning, which produces unreliable edge flow readings,
+// we only turn if we lower the confidence level to 0
+// each negative detection adds confidence and a positive one decrements
+
+// this parameter 
 uint8_t reset_confidence_level = RESET_CONFIDENCE_LEVEL;
 uint8_t max_trajectory_confidence = MAX_CONFIDENCE_LEVEL; // number of consecutive negative object detections to be sure we are obstacle free
 
-// edge histogram bin will give general headings
-// edge flow gives the depth (closer object has larger edge flow so it will weigh more when chosing the heading)
-
+//////////
 /*
- * This next section defines an ABI messaging event (http://wiki.paparazziuav.org/wiki/ABI), necessary
- * any time data calculated in another module needs to be accessed. Including the file where this external
- * data is defined is not enough, since modules are executed parallel to each other, at different frequencies,
- * in different threads. The ABI event is triggered every time new data is sent out, and as such the function
- * defined in this file does not need to be explicitly called, only bound in the init function
- */
+The idea is that the masked edge histogram bin will give general headings.
+This simply determins areas with the least amount of edges inside it and turns there.
+TODO: sparse_bin contains the required information for this, but the motion logic has to be implemented.
+
+sparse_bin is a byte with two 0 values and six 1 values. The edge histogram is diveded into 8 bins. The two 0 locations
+represent the part of the histogram with the two sections with the least amount of edges.
+So the idea is to turn towards them. Since there is two, turn towards the one which requires the least amount of tuning
+(0 value closer to the center)
+
+The edge flow is then used to give some depth to the 2D information stored in the sparse_bin. It might be that
+an area is qualified as safe to go to but when going there we get a large edge flow bias, meaning that there is an
+obstacle incoming from the left or the right. In this case we turn. Hopefully this way we keep a distance from objects
+
+*/
+//////////
+
 #ifndef OPTIC_FLOW_VISUAL_DETECTION_ID
 #define OPTIC_FLOW_VISUAL_DETECTION_ID ABI_BROADCAST
 #endif
@@ -240,7 +263,7 @@ void motion_module_group13_periodic(void)
   float turn_increment = 0.f;
 
   if (obstacle_detected) {
-    obstacle_free_confidence -= 1; // -1 for consistency and to filter jitter when yawing
+    obstacle_free_confidence -= 1;
     Bound(obstacle_free_confidence, 0, max_trajectory_confidence);
 
     // only deal with turning if we detect obstacles many times in a row
@@ -262,9 +285,10 @@ void motion_module_group13_periodic(void)
     }
 
   } else {
+    // TODO: implement the sparse_bin logic here
     // Find out which bit closest to the center of the sparse map is 0
-    // and calculate a heading increment that will center that would center that
-    obstacle_free_confidence += 2; // 2 for consistency and to filter jitter when yawing
+    // and calculate a heading increment that would center that bit
+    obstacle_free_confidence += 1;
   }
 
   VERBOSE_PRINT("avg_flow: %d sparse_bin: 0b%d%d%d%d%d%d%d%d state: %d detection: %d turning: %.1f\n",
@@ -276,6 +300,7 @@ void motion_module_group13_periodic(void)
   // bound obstacle_free_confidence
   Bound(obstacle_free_confidence, 0, max_trajectory_confidence);
 
+  // we move slower when we detect obstacle. Smaller distance is indeed slower drone
   float move_distance = obstacle_detected ? oa_min_forward_distance : max_distance;
 
   // confidence can still gently reduce stride if recent history is uncertain
@@ -286,15 +311,22 @@ void motion_module_group13_periodic(void)
   switch (navigation_state){
     case SAFE:
       // Move waypoint forward
+      // This moves a virtual waypoint to some location so the the if
+      // block can check if this is inside the safe zone or not
       moveWaypointForward(WP_TRAJECTORY, 1.f * move_distance, 0.f);
       if (!InsideObstacleZone(WaypointX(WP_TRAJECTORY),WaypointY(WP_TRAJECTORY))){
         navigation_state = OUT_OF_BOUNDS;
       } else {
+        // Now we actually set our waypoint
+        // no obstacle, so we go straight
         struct EnuCoor_i new_goal = moveWaypointForward(WP_GOAL, move_distance, 0.f);
         // Update heading reference based on vector from current position to new goal
         struct EnuCoor_i current_pos = *stateGetPositionEnu_i();
         float dx = POS_FLOAT_OF_BFP(new_goal.x - current_pos.x);
         float dy = POS_FLOAT_OF_BFP(new_goal.y - current_pos.y);
+        // Heading increments are based on the track of the drone and not the heading.
+        // Previously, it would just move the waypoint in the direction of the drone was facing
+        // if the drone was turning, it lead to oscillations
         straight_section_heading = atan2f(dx, dy);
       }
 
@@ -303,18 +335,19 @@ void motion_module_group13_periodic(void)
       // move waypoint forward and at an angle compared to the previous heading
       moveWaypointForward(WP_TRAJECTORY, 1.f * move_distance, heading_increment);
 
-      navigation_state = SAFE;
-      // reset this so we fly straight after turning
-      obstacle_free_confidence = reset_confidence_level;
-
       if (!InsideObstacleZone(WaypointX(WP_TRAJECTORY),WaypointY(WP_TRAJECTORY))){
         navigation_state = OUT_OF_BOUNDS;
       } else {
+        // reset this so we fly straight after turning
+        navigation_state = SAFE;
+        obstacle_free_confidence = reset_confidence_level;
+        // move are actual waypoint with a track offset determined by the heading_increment
         struct EnuCoor_i new_goal = moveWaypointForward(WP_GOAL, move_distance, heading_increment);
         // Update heading reference based on vector from current position to new goal
         struct EnuCoor_i current_pos = *stateGetPositionEnu_i();
         float dx = POS_FLOAT_OF_BFP(new_goal.x - current_pos.x);
         float dy = POS_FLOAT_OF_BFP(new_goal.y - current_pos.y);
+        // store the heading (track) of the next straight line section as a reference for the one after
         straight_section_heading = atan2f(dx, dy);
         // Follow the new straight section heading with a coordinated turn.
         align_nav_heading_to_straight_section();
