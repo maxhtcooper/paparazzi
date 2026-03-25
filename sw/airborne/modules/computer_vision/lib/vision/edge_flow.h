@@ -87,8 +87,10 @@ void draw_edgeflow_img(struct image_t *img, struct edge_flow_t edgeflow, int32_t
                        , int32_t *edge_hist_y, struct opticflow_result_t *result);
 void calc_previous_frame_nr(struct opticflow_result_t *result, struct opticflow_t *opticflow, uint8_t current_frame_nr,
                             uint8_t *previous_frame_offset, uint8_t *previous_frame_nr);
-void calculate_edge_histogram(struct image_t *img, int32_t edge_histogram[],
-                              char direction, uint8_t edge_threshold);
+int16_t calculate_edge_histogram(struct image_t *img, int32_t edge_histogram[],
+                              char direction, uint8_t edge_threshold, uint8_t lum_min,
+                              uint8_t lum_max, uint8_t cb_min, uint8_t cb_max,
+                              uint8_t cr_min, uint8_t cr_max);
 void calculate_edge_displacement(int32_t *edge_histogram, int32_t *edge_histogram_prev, int32_t *displacement,
                                  uint16_t size,
                                  uint8_t window, uint8_t disp_range, int32_t der_shift);

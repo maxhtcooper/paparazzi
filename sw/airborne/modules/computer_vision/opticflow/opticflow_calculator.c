@@ -380,6 +380,31 @@ PRINT_CONFIG_VAR(OPTICFLOW_TRACK_BACK_CAMERA2)
 #define OPTIC_FLOW_EDGE_THRESHOLD 0
 #endif
 
+// ORANGE //
+#ifndef COLOR_OBJECT_DETECTOR_LUM_MIN1
+#define COLOR_OBJECT_DETECTOR_LUM_MIN1 30
+#endif
+
+#ifndef COLOR_OBJECT_DETECTOR_LUM_MAX1
+#define COLOR_OBJECT_DETECTOR_LUM_MAX1 190
+#endif
+
+#ifndef COLOR_OBJECT_DETECTOR_CB_MIN1
+#define COLOR_OBJECT_DETECTOR_CB_MIN1 70
+#endif
+
+#ifndef COLOR_OBJECT_DETECTOR_CB_MAX1
+#define COLOR_OBJECT_DETECTOR_CB_MAX1 130
+#endif
+
+#ifndef COLOR_OBJECT_DETECTOR_CR_MIN1
+#define COLOR_OBJECT_DETECTOR_CR_MIN1 150
+#endif
+
+#ifndef COLOR_OBJECT_DETECTOR_CR_MAX1
+#define COLOR_OBJECT_DETECTOR_CR_MAX1 190
+#endif
+
 PRINT_CONFIG_VAR(OPTICFLOW_SHOW_FLOW)
 PRINT_CONFIG_VAR(OPTICFLOW_SHOW_FLOW_CAMERA2)
 
@@ -468,6 +493,12 @@ void opticflow_calc_init(struct opticflow_t opticflow[])
   opticflow[0].camera = &OPTICFLOW_CAMERA;
   opticflow[0].id = 0;
   opticflow[0].edge_threshold = OPTIC_FLOW_EDGE_THRESHOLD;
+  opticflow[0].lum_min = COLOR_OBJECT_DETECTOR_LUM_MIN1;
+  opticflow[0].lum_max = COLOR_OBJECT_DETECTOR_LUM_MAX1;
+  opticflow[0].cb_min = COLOR_OBJECT_DETECTOR_CB_MIN1;
+  opticflow[0].cb_max = COLOR_OBJECT_DETECTOR_CB_MAX1;
+  opticflow[0].cr_min = COLOR_OBJECT_DETECTOR_CR_MIN1;
+  opticflow[0].cr_max = COLOR_OBJECT_DETECTOR_CR_MAX1;
 
   struct FloatEulers euler_cam1 = {OPTICFLOW_BODY_TO_CAM_PHI, OPTICFLOW_BODY_TO_CAM_THETA, OPTICFLOW_BODY_TO_CAM_PSI};
   float_rmat_of_eulers(&body_to_cam[0], &euler_cam1);
@@ -1128,8 +1159,13 @@ bool calc_edgeflow_tot(struct opticflow_t *opticflow, struct image_t *img,
   // Calculate current frame's edge histogram
   int32_t *edge_hist_x = edge_hist[current_frame_nr].x;
   int32_t *edge_hist_y = edge_hist[current_frame_nr].y;
-  calculate_edge_histogram(img, edge_hist_x, 'x', opticflow->edge_threshold); // horizontal edges
-  calculate_edge_histogram(img, edge_hist_y, 'y', opticflow->edge_threshold); // vertical edges for each row in the image
+  // calculate_edge_histogram(img, edge_hist_y, 'x', opticflow->edge_threshold,
+  //   opticflow->lum_min, opticflow->lum_max, opticflow->cb_min, opticflow->cb_max,
+  //   opticflow->cr_min, opticflow->cr_max); // horizontal edges
+  result->color_frac = calculate_edge_histogram(img, edge_hist_y, 'y', opticflow->edge_threshold,
+    opticflow->lum_min, opticflow->lum_max, opticflow->cb_min, opticflow->cb_max,
+    opticflow->cr_min, opticflow->cr_max); // vertical edges for each row in the image
+
   // edge hstogram is an array of numbers, indicating the amount of [horizontal / vertical]
   // edges present in the given [column / row] of the image. 
 
@@ -1156,6 +1192,7 @@ bool calc_edgeflow_tot(struct opticflow_t *opticflow, struct image_t *img,
   }
 
   // Estimate pixel wise displacement of the edge histograms for x and y direction
+  // leave out for performance
   calculate_edge_displacement(edge_hist_x, prev_edge_histogram_x,
                               displacement.x, img->w,
                               window_size, disp_range,  der_shift_x);
@@ -1165,6 +1202,7 @@ bool calc_edgeflow_tot(struct opticflow_t *opticflow, struct image_t *img,
 
   // Fit a line on the pixel displacement to estimate
   // the global pixel flow and divergence (RES is resolution)
+  // leave out for performance
   line_fit(displacement.x, &edgeflow.div_x,
            &edgeflow.flow_x, img->w,
            window_size + disp_range, RES);

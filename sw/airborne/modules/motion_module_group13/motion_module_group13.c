@@ -100,6 +100,10 @@ enum navigation_state_t {
 #define TURN_FREQ 8
 #endif
 
+#ifndef ORANGE_THRESHOLD
+#define ORANGE_THRESHOLD 30
+#endif
+
 // define settings 
 // This defines the threshold for the absolute value of the edge flow to count as a potential obstacle
 // The rationnale is that objects close by will produce larger edge flow
@@ -118,6 +122,8 @@ float turn_base_deg = TURN_BASE_DEG;
 float turn_gain_deg = TURN_GAIN_DEG;
 // turn in every no of loops
 uint8_t turn_freq = TURN_FREQ;
+// threshold for orange emergency
+int16_t orange_threshold = ORANGE_THRESHOLD;
 
 // define and initialise global variables
 enum navigation_state_t navigation_state = SAFE;
@@ -133,6 +139,9 @@ int16_t obstacle_free_confidence = 0;   // a measure of how certain we are that 
 float heading_increment = 0.f;          // heading angle increment [deg]
 float oob_hdg_incr_deg = 30.f;
 uint8_t turn_count = 0;
+int16_t color_frac = 0;
+uint8_t orange_turn_count = 0;
+int16_t orange_turn_threshold = 6;
 
 // the confidence level decreases on positive obstacle detections. Since the obstacle detection is noisy
 // and eventually results in the drone turning, which produces unreliable edge flow readings,
@@ -170,9 +179,10 @@ might as well be helpful in some cases at least
 static abi_event color_detection_ev;
 static void optic_flow_cb(uint8_t __attribute__((unused)) sender_id,
                                int16_t __attribute__((unused)) flow_x, int16_t __attribute__((unused)) flow_y,
-                               int16_t  __attribute__((unused)), uint8_t sparse_bin_received,
+                               int16_t color_frac_received, uint8_t sparse_bin_received,
                                int32_t avg_received, int16_t __attribute__((unused)) extra)
 {
+  color_frac = color_frac_received;
   sparse_bin = sparse_bin_received;
   if (oa_flow_lpf_enable) {
     float alpha = oa_flow_lpf_alpha;
@@ -232,6 +242,7 @@ void motion_module_group13_periodic(void)
   float abs_avg_flow_f = (float)abs_avg_flow;
 
   uint8_t obstacle_detected = (abs_avg_flow_f >= oa_hist_flow_threshold);
+  uint8_t orange_emergency = (color_frac >= orange_threshold);
 
   float turn_increment = 0.f;
   heading_increment = 0.f;
@@ -281,7 +292,7 @@ void motion_module_group13_periodic(void)
       }
     }
   }
-  
+
   if (turn_count > turn_freq) {
     switch (closest_zero_bit) {
       case 0:
@@ -315,12 +326,21 @@ void motion_module_group13_periodic(void)
     turn_count += 1;
   }
 
-  VERBOSE_PRINT("avg_flow: %d sparse_bin: 0b%d%d%d%d%d%d%d%d closest0: %d state: %d detection: %d turning: %.1f turn_count: %d\n",
+  if (orange_turn_count > orange_turn_threshold) {
+    orange_turn_count = 0;
+    if (orange_emergency) {
+      heading_increment = 60;
+    }
+  } else {
+    orange_turn_count += 1;
+  }
+
+  VERBOSE_PRINT("avg_flow: %d sparse_bin: 0b%d%d%d%d%d%d%d%d closest0: %d state: %d detection: %d turning: %.1f color_frac: %d\n",
                 avg_flow,
                 (sparse_bin >> 7) & 1, (sparse_bin >> 6) & 1, (sparse_bin >> 5) & 1, (sparse_bin >> 4) & 1,
                 (sparse_bin >> 3) & 1, (sparse_bin >> 2) & 1, (sparse_bin >> 1) & 1, sparse_bin & 1,
                 closest_zero_bit,
-                navigation_state, obstacle_detected, heading_increment, turn_count);
+                navigation_state, obstacle_detected, heading_increment, color_frac);
 
   // bound obstacle_free_confidence
   Bound(obstacle_free_confidence, 0, max_trajectory_confidence);

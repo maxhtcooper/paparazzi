@@ -85,8 +85,10 @@ void  calc_previous_frame_nr(struct opticflow_result_t *result, struct opticflow
  * @param[in] direction  Indicating if the histogram is made in either x or y direction
  * @param[in] edge_threshold  A threshold if a gradient is considered a edge or not
  */
-void calculate_edge_histogram(struct image_t *img, int32_t edge_histogram[],
-                              char direction, uint8_t edge_threshold)
+int16_t calculate_edge_histogram(struct image_t *img, int32_t edge_histogram[],
+                              char direction, uint8_t edge_threshold, uint8_t lum_min,
+                              uint8_t lum_max, uint8_t cb_min, uint8_t cb_max,
+                              uint8_t cr_min, uint8_t cr_max)
 {
   uint8_t *img_buf = (uint8_t *)img->buf;
 
@@ -111,6 +113,8 @@ void calculate_edge_histogram(struct image_t *img, int32_t edge_histogram[],
       while (1);   // hang to show user something isn't right
   }
 
+  int32_t color_count = 0;
+  int16_t color_frac = 0;
 
   // compute edge histogram
   if (direction == 'x') {
@@ -152,10 +156,32 @@ void calculate_edge_histogram(struct image_t *img, int32_t edge_histogram[],
         if (sobel_sum > edge_threshold) {
           edge_histogram[y] += sobel_sum;
         }
-      }
+
+        // Detect color pixels here and store count
+        uint8_t *yp, *up, *vp;
+        if (x % 2 == 0) {
+          up = &img_buf[y * 2 * img->w + 2 * x];      
+          yp = &img_buf[y * 2 * img->w + 2 * x + 1];  
+          vp = &img_buf[y * 2 * img->w + 2 * x + 2];  
+        } else {
+          up = &img_buf[y * 2 * img->w + 2 * x - 2];  
+          vp = &img_buf[y * 2 * img->w + 2 * x];      
+          yp = &img_buf[y * 2 * img->w + 2 * x + 1];  
+        }
+
+        // If the pixel matches the orange color threshold
+        if ( (*yp >= lum_min) && (*yp <= lum_max) &&
+            (*up >= cb_min ) && (*up <= cb_max ) &&
+            (*vp >= cr_min ) && (*vp <= cr_max )) {
+              color_count += 1;
+            }
+        }
     }
-  } else
+    color_frac = (100 * color_count) / (image_height * image_width);
+  } else {
     while (1);  // hang to show user something isn't right
+  }
+  return color_frac;
 }
 
 /**
