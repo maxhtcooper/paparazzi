@@ -19,10 +19,10 @@
 extern float oa_color_count_frac;
 extern uint8_t oa_flow_lpf_enable;
 extern float oa_flow_lpf_alpha;
-extern int32_t oa_avg_flow_threshold;  // ADDED: Matches the new XML slider!
+extern int32_t oa_avg_flow_threshold;
 
 // --- Global variables ---
-extern int32_t color_count;            // Exposed in case you want to log it via telemetry later
+extern int32_t color_count;            
 
 // --- Functions ---
 extern void motion_module_group13_init(void);

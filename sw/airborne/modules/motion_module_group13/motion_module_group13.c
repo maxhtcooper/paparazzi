@@ -7,7 +7,7 @@
 /**
  * @file "modules/motion_module_group13/motion_module_group13.c"
  * @author Roland Meertens
- * Combined module: Optic flow avoidance with an Orange Color Detection Failsafe.
+ * Combined module: Optic flow avoidance with a 30% Orange Color Detection Failsafe.
  */
 
 #include "modules/motion_module_group13/motion_module_group13.h"
@@ -48,7 +48,6 @@ enum navigation_state_t {
   OUT_OF_BOUNDS
 };
 
-// Default fallback values if not set in XML
 #ifndef MOTION_GROUP13_FLOW_LPF_ENABLE
 #define MOTION_GROUP13_FLOW_LPF_ENABLE 1
 #endif
@@ -73,7 +72,7 @@ enum navigation_state_t {
 extern struct video_config_t front_camera;
 
 // --- Settings exposed to XML / GCS ---
-float oa_color_count_frac = 0.20f;
+float oa_color_count_frac = 0.30f; // HARD DEFAULT TO 30%
 uint8_t oa_flow_lpf_enable = MOTION_GROUP13_FLOW_LPF_ENABLE;
 float oa_flow_lpf_alpha = MOTION_GROUP13_FLOW_LPF_ALPHA;
 int32_t oa_avg_flow_threshold = MOTION_GROUP13_AVG_FLOW_THRESHOLD;
@@ -97,13 +96,13 @@ static uint8_t avg_flow_lpf_initialized = 0;
 int32_t color_count = 0;                
 
 // Navigation Variables
-int16_t obstacle_free_confidence = 0;   // Measure of how certain we are that the way ahead is safe
-float heading_increment = 5.f;          // Heading angle increment [deg]
-float maxDistance = 2.25;               // Max waypoint displacement [m]
-int turn_counter = 0;                   // Counter for minimum turn duration
+int16_t obstacle_free_confidence = 0;   
+float heading_increment = 5.f;          
+float maxDistance = 2.25;               
+int turn_counter = 0;                   
 
-const int16_t max_trajectory_confidence = 5; // Consecutive clear readings to be sure we are obstacle free
-const int min_turn_cycles = 10;              // Minimum cycles to turn before checking confidence
+const int16_t max_trajectory_confidence = 5; 
+const int min_turn_cycles = 10;              
 
 /*
  * ABI bindings for Optic Flow
@@ -156,7 +155,6 @@ static void color_detection_cb(uint8_t __attribute__((unused)) sender_id,
                                int16_t __attribute__((unused)) pixel_width, int16_t __attribute__((unused)) pixel_height,
                                int32_t quality, int16_t __attribute__((unused)) extra)
 {
-  // Quality variable contains the pixel count from cv_detect_color_object
   color_count = quality;
 }
 
@@ -165,153 +163,123 @@ static void color_detection_cb(uint8_t __attribute__((unused)) sender_id,
  */
 void motion_module_group13_init(void)
 {
-  // Initialise random values
   srand(time(NULL));
   heading_increment = 5.f;
   
-  // Bind Optic Flow
   AbiBindMsgVISUAL_DETECTION(OPTIC_FLOW_VISUAL_DETECTION_ID, &optic_flow_ev, optic_flow_cb);
-  
-  // Bind Color Detection (Failsafe)
   AbiBindMsgVISUAL_DETECTION(ORANGE_AVOIDER_VISUAL_DETECTION_ID, &color_detection_ev, color_detection_cb);
 }
 
 /*
- * Periodic Function - Checks both Optic Flow AND Color Count to ensure safety
+ * Periodic Function
  */
 void motion_module_group13_periodic(void)
 {
-  // Only evaluate our state machine if we are flying
   if(!autopilot_in_flight()){
     return;
   }
 
-  // --- FAILSAFE EVALUATION ---
-  // Compute current color thresholds dynamically based on resolution
-  int32_t color_count_threshold = oa_color_count_frac * front_camera.output_size.w * front_camera.output_size.h;
-
-  // Determine if both sensors think the path is safe
+  // --- 1. EVALUATE OPTIC FLOW PIPELINE ---
   bool optic_flow_safe = (abs(avg_flow) < oa_avg_flow_threshold);
 
-  // --- ADDED: 2-FRAME DEBOUNCE FOR COLOR FILTER ---
-  static int color_danger_counter = 0; // Remembers consecutive orange frames
-  
-  if (color_count >= color_count_threshold) {
-      color_danger_counter++; // Increment if we see orange
-  } else {
-      color_danger_counter = 0; // Reset immediately if the screen clears up
-  }
-
-  // The color failsafe is only triggered if we see orange for 2 or more frames in a row
-  bool color_safe = (color_danger_counter < 3);
-
-  // --- SPINNING FIX ---
-  // We temporarily ignore optic flow while spinning to let the confidence counter recover.
+  // We temporarily ignore optic flow while spinning to let the confidence counter recover
   if (navigation_state == SEARCH_FOR_SAFE_HEADING) {
       optic_flow_safe = true; 
   }
-  
-  // A heading is only "safe" if BOTH avg_flow is low AND color count is low.
+
+  // --- 2. EVALUATE EMERGENCY FAILSAFE (>30% ORANGE) ---
+  int32_t color_count_threshold = oa_color_count_frac * front_camera.output_size.w * front_camera.output_size.h;
+  static int color_danger_counter = 0; 
+
+  if (color_count >= color_count_threshold) {
+      color_danger_counter++; // Increment if 30+% orange is seen
+  } else {
+      color_danger_counter = 0; // Reset immediately if screen clears up
+  }
+
+  // Failsafe triggers ONLY if screen is >= 30% orange for 2 consecutive frames
+  bool color_safe = (color_danger_counter < 2);
+
+  // Update confidence based on both pipelines
   if (optic_flow_safe && color_safe) {
     obstacle_free_confidence++;
   } else {
-    obstacle_free_confidence--;  // Drop confidence if EITHER detects an obstacle
+    obstacle_free_confidence--; 
   }
   
-  VERBOSE_PRINT("State: %d avg_flow: %d color_count: %d (Thr: %d) conf: %d turns: %d\n", 
-                navigation_state, avg_flow, color_count, color_count_threshold, obstacle_free_confidence, turn_counter);
+  VERBOSE_PRINT("State: %d avg_flow: %d color_count: %d (Thr: %d) conf: %d\n", 
+                navigation_state, avg_flow, color_count, color_count_threshold, obstacle_free_confidence);
 
-  // Bound obstacle_free_confidence
   Bound(obstacle_free_confidence, 0, max_trajectory_confidence);
-
   float moveDistance = fminf(maxDistance, 0.2f * obstacle_free_confidence);
 
   switch (navigation_state){
     case SAFE:
-      // Move waypoint forward
       moveWaypointForward(WP_TRAJECTORY, 1.5f * moveDistance);
       
       if (!InsideObstacleZone(WaypointX(WP_TRAJECTORY),WaypointY(WP_TRAJECTORY))){
         navigation_state = OUT_OF_BOUNDS;
       } 
-      // If confidence hits 0, OR either immediate threshold is crossed, react instantly
-      else if (obstacle_free_confidence == 0 || !optic_flow_safe || !color_safe){
+      // TRIGGER AVOIDANCE IF FAILSAFE TRIPPED *OR* OPTIC FLOW IS BLOCKED
+      else if (!color_safe || obstacle_free_confidence == 0 || !optic_flow_safe){
         
         chooseDirectionalAvoidance(flow_der_x);
         navigation_state = OBSTACLE_FOUND;
         
         if (!color_safe) {
-            VERBOSE_PRINT("F A I L S A F E   T R I G G E R - Orange Pole Detected!\n");
+            VERBOSE_PRINT("F A I L S A F E : 30%%+ Orange Detected! Emergency Stop.\n");
         } else {
-            VERBOSE_PRINT("O B S T A C L E   D E T E C T E D - Optic Flow Peak!\n");
+            VERBOSE_PRINT("O B S T A C L E : Optic flow pipeline blocked.\n");
         }
         
       } else {
         moveWaypointForward(WP_GOAL, moveDistance);
       }
-
       break;
+
     case OBSTACLE_FOUND:
-      // Stop
       waypoint_move_here_2d(WP_GOAL);
       waypoint_move_here_2d(WP_TRAJECTORY);
-
-      // Select directional search direction
       chooseDirectionalAvoidance(flow_der_x);
       turn_counter = 0;
-
       navigation_state = SEARCH_FOR_SAFE_HEADING;
-
       break;
+
     case SEARCH_FOR_SAFE_HEADING:
       increase_nav_heading(heading_increment);
       turn_counter++;
 
-      // Make sure we have a couple of good readings before declaring the way safe
       if (obstacle_free_confidence >= 3 && turn_counter >= min_turn_cycles){
         navigation_state = SAFE;
-        turn_counter = 0;  // Reset for next turning episode
+        turn_counter = 0; 
       }
       break;
+
     case OUT_OF_BOUNDS:
       increase_nav_heading(heading_increment);
       moveWaypointForward(WP_TRAJECTORY, 1.5f);
 
       if (InsideObstacleZone(WaypointX(WP_TRAJECTORY),WaypointY(WP_TRAJECTORY))){
-        // Add offset to head back into arena
         increase_nav_heading(heading_increment);
-
-        // Reset safe counter
         obstacle_free_confidence = 0;
-
-        // Ensure direction is safe before continuing
         navigation_state = SEARCH_FOR_SAFE_HEADING;
       }
       break;
+      
     default:
       break;
   }
   return;
 }
 
-/*
- * Increases the NAV heading. Assumes heading is an INT32_ANGLE. It is bound in this function.
- */
 uint8_t increase_nav_heading(float incrementDegrees)
 {
   float new_heading = stateGetNedToBodyEulers_f()->psi + RadOfDeg(incrementDegrees);
-
-  // Normalize heading to [-pi, pi]
   FLOAT_ANGLE_NORMALIZE(new_heading);
-
-  // Set heading, declared in firmwares/rotorcraft/navigation.h
   nav.heading = new_heading;
   return false;
 }
 
-/*
- * Calculates coordinates of distance forward and sets waypoint 'waypoint' to those coordinates
- */
 uint8_t moveWaypointForward(uint8_t waypoint, float distanceMeters)
 {
   struct EnuCoor_i new_coor;
@@ -320,40 +288,26 @@ uint8_t moveWaypointForward(uint8_t waypoint, float distanceMeters)
   return false;
 }
 
-/*
- * Calculates coordinates of a distance of 'distanceMeters' forward w.r.t. current position and heading
- */
 uint8_t calculateForwards(struct EnuCoor_i *new_coor, float distanceMeters)
 {
   float heading  = stateGetNedToBodyEulers_f()->psi;
-
-  // Determine where to place the waypoint you want to go to
   new_coor->x = stateGetPositionEnu_i()->x + POS_BFP_OF_REAL(sinf(heading) * (distanceMeters));
   new_coor->y = stateGetPositionEnu_i()->y + POS_BFP_OF_REAL(cosf(heading) * (distanceMeters));
   return false;
 }
 
-/*
- * Sets waypoint 'waypoint' to the coordinates of 'new_coor'
- */
 uint8_t moveWaypoint(uint8_t waypoint, struct EnuCoor_i *new_coor)
 {
   waypoint_move_xy_i(waypoint, new_coor->x, new_coor->y);
   return false;
 }
 
-/*
- * Avoidance direction logic
- */
 static uint8_t chooseDirectionalAvoidance(int16_t current_flow_der_x)
 {
-  // For center peaks or untextured orange poles, use random direction to avoid getting stuck
   if (rand() % 2 == 0) {
     heading_increment = 5.f;
-    VERBOSE_PRINT("Avoidance: Steering RIGHT\n");
   } else {
     heading_increment = -5.f;
-    VERBOSE_PRINT("Avoidance: Steering LEFT\n");
   }
   return false;
 }
