@@ -193,44 +193,44 @@ static void optic_flow_cb(uint8_t __attribute__((unused)) sender_id,
 
 
 // --- 2. SVM LISTENER (For Visualization) ---
-#ifndef SVM_VISUAL_DETECTION_ID
-#define SVM_VISUAL_DETECTION_ID ABI_BROADCAST // We will update this ID later to match the SVM!
-#endif
+// #ifndef SVM_VISUAL_DETECTION_ID
+// #define SVM_VISUAL_DETECTION_ID ABI_BROADCAST // We will update this ID later to match the SVM!
+// #endif
 
-static abi_event svm_detection_ev;
-static void svm_detection_cb(uint8_t __attribute__((unused)) sender_id,
-                               int16_t pixel_x, int16_t  pixel_y,
-                               int16_t pixel_width, int16_t  pixel_height,
-                               int32_t __attribute__((unused)) quality, int16_t __attribute__((unused)) extra)
-{
-  // Save the AI's coordinates so our drawing function can see them
-  svm_bbox_x = pixel_x;
-  svm_bbox_y = pixel_y;
-  svm_bbox_width = pixel_width;
-  svm_bbox_height = pixel_height;
-}
+// static abi_event svm_detection_ev;
+// static void svm_detection_cb(uint8_t __attribute__((unused)) sender_id,
+//                                int16_t pixel_x, int16_t  pixel_y,
+//                                int16_t pixel_width, int16_t  pixel_height,
+//                                int32_t __attribute__((unused)) quality, int16_t __attribute__((unused)) extra)
+// {
+//   // Save the AI's coordinates so our drawing function can see them
+//   svm_bbox_x = pixel_x;
+//   svm_bbox_y = pixel_y;
+//   svm_bbox_width = pixel_width;
+//   svm_bbox_height = pixel_height;
+// }
 
-static struct video_listener *my_video_listener;
+// static struct video_listener *my_video_listener;
 
-// --- 3. SVM DRAWING FUNCTION ---
-static struct image_t * draw_svm_bounding_box(struct image_t *img, uint8_t camera_id){
-  (void)camera_id; 
-  if (svm_bbox_width > 0 && svm_bbox_height > 0){
-    int x_min = svm_bbox_x - (svm_bbox_width / 2);
-    int y_min = svm_bbox_y - (svm_bbox_height / 2);
-    int x_max = svm_bbox_x + (svm_bbox_width / 2);
-    int y_max = svm_bbox_y + (svm_bbox_height / 2);
+// // --- 3. SVM DRAWING FUNCTION ---
+// static struct image_t * draw_svm_bounding_box(struct image_t *img, uint8_t camera_id){
+//   (void)camera_id; 
+//   if (svm_bbox_width > 0 && svm_bbox_height > 0){
+//     int x_min = svm_bbox_x - (svm_bbox_width / 2);
+//     int y_min = svm_bbox_y - (svm_bbox_height / 2);
+//     int x_max = svm_bbox_x + (svm_bbox_width / 2);
+//     int y_max = svm_bbox_y + (svm_bbox_height / 2);
 
-    // YUV color for bright Green so it contrasts with your red color filter boxes!
-    uint8_t green_yuv[3] = {150, 43, 21}; 
+//     // YUV color for bright Green so it contrasts with your red color filter boxes!
+//     uint8_t green_yuv[3] = {150, 43, 21}; 
     
-    // Draw thick green bounding box
-    for (int t = 0; t < 3; t++) {
-        image_draw_rectangle(img, x_min-t, x_max+t, y_min-t, y_max+t, green_yuv);
-    }
-  }
-  return img;
-}
+//     // Draw thick green bounding box
+//     for (int t = 0; t < 3; t++) {
+//         image_draw_rectangle(img, x_min-t, x_max+t, y_min-t, y_max+t, green_yuv);
+//     }
+//   }
+//   return img;
+// }
 /*
  * Initialisation function, setting random seed and heading increment
  */
