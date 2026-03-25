@@ -53,7 +53,7 @@
 static pthread_mutex_t mutex;
 
 #ifndef OPTIC_FLOW_DETECTOR_FPS1
-#define OPTIC_FLOW_DETECTOR_FPS1 10 ///< Default FPS (zero means run at camera fps)
+#define OPTIC_FLOW_DETECTOR_FPS1 0 ///< Default FPS (zero means run at camera fps)
 #endif
 
 // Filter Settings
@@ -89,6 +89,53 @@ static struct image_t *object_detector(struct image_t *img, uint8_t filter)
   struct pose_t pose = get_rotation_at_timestamp(img->pprz_ts);
   // store in image metadata for the optic flow algorithms
   img->eulers = pose.eulers;
+
+  // // ==========================================
+  // // START OF ADJUSTABLE BOX BLUR
+  // // ==========================================
+  // if (img->type == IMAGE_YUV422) {
+  //   uint32_t w = img->w;
+  //   uint32_t h = img->h;
+  //   uint8_t *pixels = (uint8_t *)img->buf;
+  //   uint32_t row_bytes = w * 2;
+
+  //   // --- TUNE YOUR BLUR HERE ---
+  //   // 2 = 5 pixels (Mild)
+  //   // 5 = 11 pixels (Aggressive)
+  //   // 10 = 21 pixels (Vaseline on the lens)
+  //   int BLUR_RADIUS = 6; 
+  //   int num_pixels = (BLUR_RADIUS * 2) + 1;
+  //   // ---------------------------
+
+  //   // Pass 1: Horizontal Smear
+  //   for (uint32_t y = 0; y < h; y++) {
+  //     for (uint32_t x = BLUR_RADIUS; x < w - BLUR_RADIUS; x++) {
+  //       uint32_t idx = (y * w + x) * 2 + 1; // Find the Brightness (Y) byte
+        
+  //       uint32_t sum = 0;
+  //       for (int b = -BLUR_RADIUS; b <= BLUR_RADIUS; b++) {
+  //         sum += pixels[idx + (b * 2)];
+  //       }
+  //       pixels[idx] = sum / num_pixels;
+  //     }
+  //   }
+
+  //   // Pass 2: Vertical Smear
+  //   for (uint32_t x = 0; x < w; x++) {
+  //     for (uint32_t y = BLUR_RADIUS; y < h - BLUR_RADIUS; y++) {
+  //       uint32_t idx = (y * w + x) * 2 + 1; // Find the Brightness (Y) byte
+        
+  //       uint32_t sum = 0;
+  //       for (int b = -BLUR_RADIUS; b <= BLUR_RADIUS; b++) {
+  //         sum += pixels[idx + (b * row_bytes)];
+  //       }
+  //       pixels[idx] = sum / num_pixels;
+  //     }
+  //   }
+  // }
+  // // ==========================================
+  // // END OF ADJUSTABLE BOX BLUR
+  // // ==========================================
 
   // static so that the number of corners is kept between frames
   static struct opticflow_result_t temp_result[1];
@@ -157,7 +204,7 @@ void optic_flow_detector_periodic(void)
   // COLOR_OBJECT_DETECTION1_ID whic is defined on the Abi level to be 1
   if(opticflow_got_result[0]){
     AbiSendMsgVISUAL_DETECTION(OPTIC_FLOW_VISUAL_DETECTION_ID, local_results[0].flow_x, local_results[0].flow_y,
-        local_results[0].flow_der_x, local_results[0].flow_der_y, local_results[0].avg_flow, 0);
+        local_results[0].flow_der_x, local_results[0].flow_der_y, local_results[0].avg_flow, local_results[0].divergence);
     opticflow_got_result[0] = false;
   }
 }

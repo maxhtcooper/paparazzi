@@ -23,6 +23,13 @@
       <module name="fdm" type="gazebo"/>
       <define name="NPS_GAZEBO_WORLD" value="cyberzoo_group13.world" type="string"/>
       <define name="VIDEO_CAPTURE_PATH" value="/tmp/paparazzi/images"/>
+
+      <define name="OPTICFLOW_METHOD" value="1"/>
+      <!-- <define name="MOTION_GROUP13_FLOW_DER_THRESHOLD" value="8"/>
+      <define name="MOTION_GROUP13_AVG_FLOW_THRESHOLD" value="400"/> -->
+      <!-- <define name="OPTICFLOW_MEDIAN_FILTER" value="TRUE"/>
+      <define name="OPTICFLOW_TRACK_BACK" value="TRUE"/>
+      <define name="OPTICFLOW_FAST9_THRESHOLD" value="80"/> -->
       <!-- <define name="LOGGER_FILE_PATH" value="/tmp/paparazzi/log"/> -->
       <define name="LOGGER_FILE_PATH" value="/tmp/paparazzi/log"/>
       
