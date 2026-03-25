@@ -5,16 +5,9 @@
  *
  */
 /**
- * @file "modules/orange_avoider/orange_avoider.c"
+ * @file "modules/motion_module_group13/motion_module_group13.c"
  * @author Roland Meertens
- * Example on how to use the colours detected to avoid orange pole in the cyberzoo
- * This module is an example module for the course AE4317 Autonomous Flight of Micro Air Vehicles at the TU Delft.
- * This module is used in combination with a color filter (cv_detect_color_object) and the navigation mode of the autopilot.
- * The avoidance strategy is to simply count the total number of orange pixels. When above a certain percentage threshold,
- * (given by color_count_frac) we assume that there is an obstacle and we turn.
- *
- * The color filter settings are set using the cv_detect_color_object. This module can run multiple filters simultaneously
- * so you have to define which filter to use with the ORANGE_AVOIDER_VISUAL_DETECTION_ID setting.
+ * Combined module: Optic flow avoidance with an Orange Color Detection Failsafe.
  */
 
 #include "modules/motion_module_group13/motion_module_group13.h"
@@ -25,33 +18,27 @@
 #include <time.h>
 #include <stdio.h>
 
-// some includes to visualize bounding boxes in video stream
+// Includes to visualize bounding boxes and access camera settings
 #include "modules/computer_vision/cv.h"
 #include "modules/computer_vision/lib/vision/image.h"
+#include "modules/computer_vision/video_thread.h" // Needed for front_camera size
 
 #include "generated/flight_plan.h"
 
 #define ORANGE_AVOIDER_VERBOSE TRUE
 
-#define PRINT(string,...) fprintf(stderr, "[orange_avoider->%s()] " string,__FUNCTION__ , ##__VA_ARGS__)
+#define PRINT(string,...) fprintf(stderr, "[motion_module_group13->%s()] " string,__FUNCTION__ , ##__VA_ARGS__)
 #if ORANGE_AVOIDER_VERBOSE
 #define VERBOSE_PRINT PRINT
 #else
 #define VERBOSE_PRINT(...)
 #endif
 
-
-// Bounding box memory variables
-int16_t svm_bbox_x = 0;
-int16_t svm_bbox_y = 0;
-int16_t svm_bbox_width = 0;
-int16_t svm_bbox_height = 0;
-
+// Forward declarations
 static uint8_t moveWaypointForward(uint8_t waypoint, float distanceMeters);
 static uint8_t calculateForwards(struct EnuCoor_i *new_coor, float distanceMeters);
 static uint8_t moveWaypoint(uint8_t waypoint, struct EnuCoor_i *new_coor);
 static uint8_t increase_nav_heading(float incrementDegrees);
-// static uint8_t chooseRandomIncrementAvoidance(void);
 static uint8_t chooseDirectionalAvoidance(int16_t current_flow_der_x);
 
 enum navigation_state_t {
@@ -61,6 +48,7 @@ enum navigation_state_t {
   OUT_OF_BOUNDS
 };
 
+// Default fallback values if not set in XML
 #ifndef MOTION_GROUP13_FLOW_LPF_ENABLE
 #define MOTION_GROUP13_FLOW_LPF_ENABLE 1
 #endif
@@ -69,60 +57,66 @@ enum navigation_state_t {
 #define MOTION_GROUP13_FLOW_LPF_ALPHA 0.20f
 #endif
 
-// define settings  
-float oa_color_count_frac = 0.18f;
-uint8_t oa_flow_lpf_enable = MOTION_GROUP13_FLOW_LPF_ENABLE;
-float oa_flow_lpf_alpha = MOTION_GROUP13_FLOW_LPF_ALPHA;
-
 #ifndef MOTION_GROUP13_FLOW_DER_THRESHOLD
-#define MOTION_GROUP13_FLOW_DER_THRESHOLD 200  // Increased from 100 to reduce false positives
+#define MOTION_GROUP13_FLOW_DER_THRESHOLD 200
 #endif
 
 #ifndef MOTION_GROUP13_AVG_FLOW_THRESHOLD
-#define MOTION_GROUP13_AVG_FLOW_THRESHOLD 350  // Increased from 250 to reduce false positives
+#define MOTION_GROUP13_AVG_FLOW_THRESHOLD 350
 #endif
-
-int32_t oa_avg_flow_threshold = MOTION_GROUP13_AVG_FLOW_THRESHOLD;
-int16_t oa_flow_der_threshold = MOTION_GROUP13_FLOW_DER_THRESHOLD;
 
 #ifndef MOTION_GROUP13_DIVERGENCE_THRESHOLD
-#define MOTION_GROUP13_DIVERGENCE_THRESHOLD 50  // Positive divergence indicates approaching obstacle
+#define MOTION_GROUP13_DIVERGENCE_THRESHOLD 50
 #endif
+
+// External camera reference for threshold calculation
+extern struct video_config_t front_camera;
+
+// --- Settings exposed to XML / GCS ---
+float oa_color_count_frac = 0.20f;
+uint8_t oa_flow_lpf_enable = MOTION_GROUP13_FLOW_LPF_ENABLE;
+float oa_flow_lpf_alpha = MOTION_GROUP13_FLOW_LPF_ALPHA;
+int32_t oa_avg_flow_threshold = MOTION_GROUP13_AVG_FLOW_THRESHOLD;
+
+// Internal thresholds
+int16_t oa_flow_der_threshold = MOTION_GROUP13_FLOW_DER_THRESHOLD;
 int16_t oa_divergence_threshold = MOTION_GROUP13_DIVERGENCE_THRESHOLD;
 
-// define and initialise global variables
+// Global state variables
 enum navigation_state_t navigation_state = SEARCH_FOR_SAFE_HEADING;
 
+// Optic Flow Variables
 int16_t flow_der_x = 0;
 int16_t flow_der_y = 0;
 int32_t avg_flow = 0;
-int16_t divergence = 0;  // Divergence from optic flow
+int16_t divergence = 0;
 static float avg_flow_lpf_state = 0.f;
 static uint8_t avg_flow_lpf_initialized = 0;
-int16_t obstacle_free_confidence = 0;   // a measure of how certain we are that the way ahead is safe.
-float heading_increment = 5.f;          // heading angle increment [deg]
-float maxDistance = 2.25;               // max waypoint displacement [m]
-int turn_counter = 0;                   // counter for minimum turn duration
 
-const int16_t max_trajectory_confidence = 5; // number of consecutive negative object detections to be sure we are obstacle free
-const int min_turn_cycles = 10; // minimum number of cycles to turn before checking confidence
+// Failsafe Color Count Variable
+int32_t color_count = 0;                
+
+// Navigation Variables
+int16_t obstacle_free_confidence = 0;   // Measure of how certain we are that the way ahead is safe
+float heading_increment = 5.f;          // Heading angle increment [deg]
+float maxDistance = 2.25;               // Max waypoint displacement [m]
+int turn_counter = 0;                   // Counter for minimum turn duration
+
+const int16_t max_trajectory_confidence = 5; // Consecutive clear readings to be sure we are obstacle free
+const int min_turn_cycles = 10;              // Minimum cycles to turn before checking confidence
 
 /*
- * This next section defines an ABI messaging event (http://wiki.paparazziuav.org/wiki/ABI), necessary
- * any time data calculated in another module needs to be accessed. Including the file where this external
- * data is defined is not enough, since modules are executed parallel to each other, at different frequencies,
- * in different threads. The ABI event is triggered every time new data is sent out, and as such the function
- * defined in this file does not need to be explicitly called, only bound in the init function
+ * ABI bindings for Optic Flow
  */
 #ifndef OPTIC_FLOW_VISUAL_DETECTION_ID
 #define OPTIC_FLOW_VISUAL_DETECTION_ID ABI_BROADCAST
 #endif
 
-static abi_event color_detection_ev;
+static abi_event optic_flow_ev;
 static void optic_flow_cb(uint8_t __attribute__((unused)) sender_id,
-                               int16_t __attribute__((unused)) flow_x, int16_t __attribute__((unused)) flow_y,
-                               int16_t flow_der_x_received, int16_t flow_der_y_received,
-                               int32_t avg_received, int16_t __attribute__((unused)) extra)
+                          int16_t __attribute__((unused)) flow_x, int16_t __attribute__((unused)) flow_y,
+                          int16_t flow_der_x_received, int16_t flow_der_y_received,
+                          int32_t avg_received, int16_t __attribute__((unused)) extra)
 {
   flow_der_x = flow_der_x_received;
   flow_der_y = flow_der_y_received;
@@ -132,11 +126,8 @@ static void optic_flow_cb(uint8_t __attribute__((unused)) sender_id,
     float alpha = oa_flow_lpf_alpha;
     float avg_received_f = (float)avg_received;
 
-    if (alpha < 0.f) {
-      alpha = 0.f;
-    } else if (alpha > 1.f) {
-      alpha = 1.f;
-    }
+    if (alpha < 0.f) alpha = 0.f;
+    else if (alpha > 1.f) alpha = 1.f;
 
     if (!avg_flow_lpf_initialized) {
       avg_flow_lpf_state = avg_received_f;
@@ -144,7 +135,6 @@ static void optic_flow_cb(uint8_t __attribute__((unused)) sender_id,
     } else {
       avg_flow_lpf_state += alpha * (avg_received_f - avg_flow_lpf_state);
     }
-
     avg_flow = (int32_t)avg_flow_lpf_state;
   } else {
     avg_flow = avg_received;
@@ -153,93 +143,85 @@ static void optic_flow_cb(uint8_t __attribute__((unused)) sender_id,
   }
 }
 
-
-// --- 2. SVM LISTENER (For Visualization) ---
-// #ifndef SVM_VISUAL_DETECTION_ID
-// #define SVM_VISUAL_DETECTION_ID ABI_BROADCAST // We will update this ID later to match the SVM!
-// #endif
-
-// static abi_event svm_detection_ev;
-// static void svm_detection_cb(uint8_t __attribute__((unused)) sender_id,
-//                                int16_t pixel_x, int16_t  pixel_y,
-//                                int16_t pixel_width, int16_t  pixel_height,
-//                                int32_t __attribute__((unused)) quality, int16_t __attribute__((unused)) extra)
-// {
-//   // Save the AI's coordinates so our drawing function can see them
-//   svm_bbox_x = pixel_x;
-//   svm_bbox_y = pixel_y;
-//   svm_bbox_width = pixel_width;
-//   svm_bbox_height = pixel_height;
-// }
-
-// extern struct video_config_t front_camera;
-// static struct video_listener *my_video_listener;
-
-// // --- 3. SVM DRAWING FUNCTION ---
-// static struct image_t * draw_svm_bounding_box(struct image_t *img, uint8_t camera_id){
-//   (void)camera_id; 
-//   if (svm_bbox_width > 0 && svm_bbox_height > 0){
-//     int x_min = svm_bbox_x - (svm_bbox_width / 2);
-//     int y_min = svm_bbox_y - (svm_bbox_height / 2);
-//     int x_max = svm_bbox_x + (svm_bbox_width / 2);
-//     int y_max = svm_bbox_y + (svm_bbox_height / 2);
-
-//     // YUV color for bright Green so it contrasts with your red color filter boxes!
-//     uint8_t green_yuv[3] = {150, 43, 21}; 
-    
-//     // Draw thick green bounding box
-//     for (int t = 0; t < 3; t++) {
-//         image_draw_rectangle(img, x_min-t, x_max+t, y_min-t, y_max+t, green_yuv);
-//     }
-//   }
-//   return img;
-// }
 /*
- * Initialisation function, setting the colour filter, random seed and heading_increment
+ * ABI bindings for Color Detection (Failsafe)
+ */
+#ifndef ORANGE_AVOIDER_VISUAL_DETECTION_ID
+#define ORANGE_AVOIDER_VISUAL_DETECTION_ID ABI_BROADCAST
+#endif
+
+static abi_event color_detection_ev;
+static void color_detection_cb(uint8_t __attribute__((unused)) sender_id,
+                               int16_t __attribute__((unused)) pixel_x, int16_t __attribute__((unused)) pixel_y,
+                               int16_t __attribute__((unused)) pixel_width, int16_t __attribute__((unused)) pixel_height,
+                               int32_t quality, int16_t __attribute__((unused)) extra)
+{
+  // Quality variable contains the pixel count from cv_detect_color_object
+  color_count = quality;
+}
+
+/*
+ * Initialisation function
  */
 void motion_module_group13_init(void)
 {
   // Initialise random values
   srand(time(NULL));
-  // chooseRandomIncrementAvoidance();
   heading_increment = 5.f;
-  // bind our colorfilter callbacks to receive the color filter outputs
-  AbiBindMsgVISUAL_DETECTION(OPTIC_FLOW_VISUAL_DETECTION_ID, &color_detection_ev, optic_flow_cb);
+  
+  // Bind Optic Flow
+  AbiBindMsgVISUAL_DETECTION(OPTIC_FLOW_VISUAL_DETECTION_ID, &optic_flow_ev, optic_flow_cb);
+  
+  // Bind Color Detection (Failsafe)
+  AbiBindMsgVISUAL_DETECTION(ORANGE_AVOIDER_VISUAL_DETECTION_ID, &color_detection_ev, color_detection_cb);
 }
 
 /*
- * Function that checks it is safe to move forwards, and then moves a waypoint forward or changes the heading
+ * Periodic Function - Checks both Optic Flow AND Color Count to ensure safety
  */
 void motion_module_group13_periodic(void)
 {
-  // only evaluate our state machine if we are flying
+  // Only evaluate our state machine if we are flying
   if(!autopilot_in_flight()){
     return;
   }
 
-  // compute current color thresholds
-  // int32_t color_count_threshold = oa_color_count_frac * front_camera.output_size.w * front_camera.output_size.h;
+  // --- FAILSAFE EVALUATION ---
+  // Compute current color thresholds dynamically based on resolution
+  int32_t color_count_threshold = oa_color_count_frac * front_camera.output_size.w * front_camera.output_size.h;
 
+  // Determine if both sensors think the path is safe
+  bool optic_flow_safe = (abs(avg_flow) < oa_avg_flow_threshold);
 
-  // // update our safe confidence using color threshold
-  // if(color_count < color_count_threshold){
-  //   obstacle_free_confidence++;
-  // } else {
-  //   obstacle_free_confidence -= 2;  // be more cautious with positive obstacle detections
-  // }
+  // --- ADDED: 2-FRAME DEBOUNCE FOR COLOR FILTER ---
+  static int color_danger_counter = 0; // Remembers consecutive orange frames
+  
+  if (color_count >= color_count_threshold) {
+      color_danger_counter++; // Increment if we see orange
+  } else {
+      color_danger_counter = 0; // Reset immediately if the screen clears up
+  }
 
-  // bound obstacle_free_confidence
-  // Bound(obstacle_free_confidence, 0, max_trajectory_confidence);
-  // --- UPDATED CONFIDENCE LOGIC ---
-  // A heading is only "safe" if avg_flow is low (no intense motion peaks).
-  if (abs(avg_flow) < oa_avg_flow_threshold) {
+  // The color failsafe is only triggered if we see orange for 2 or more frames in a row
+  bool color_safe = (color_danger_counter < 3);
+
+  // --- SPINNING FIX ---
+  // We temporarily ignore optic flow while spinning to let the confidence counter recover.
+  if (navigation_state == SEARCH_FOR_SAFE_HEADING) {
+      optic_flow_safe = true; 
+  }
+  
+  // A heading is only "safe" if BOTH avg_flow is low AND color count is low.
+  if (optic_flow_safe && color_safe) {
     obstacle_free_confidence++;
   } else {
-    obstacle_free_confidence--;  // High avg_flow indicates obstacles
+    obstacle_free_confidence--;  // Drop confidence if EITHER detects an obstacle
   }
-  VERBOSE_PRINT("State: %d flow_der_x: %d flow_der_y: %d avg_flow: %d divergence: %d confidence: %d turn_counter: %d\n", navigation_state, flow_der_x, flow_der_y, avg_flow, divergence, obstacle_free_confidence, turn_counter);
+  
+  VERBOSE_PRINT("State: %d avg_flow: %d color_count: %d (Thr: %d) conf: %d turns: %d\n", 
+                navigation_state, avg_flow, color_count, color_count_threshold, obstacle_free_confidence, turn_counter);
 
-  // bound obstacle_free_confidence
+  // Bound obstacle_free_confidence
   Bound(obstacle_free_confidence, 0, max_trajectory_confidence);
 
   float moveDistance = fminf(maxDistance, 0.2f * obstacle_free_confidence);
@@ -248,13 +230,21 @@ void motion_module_group13_periodic(void)
     case SAFE:
       // Move waypoint forward
       moveWaypointForward(WP_TRAJECTORY, 1.5f * moveDistance);
+      
       if (!InsideObstacleZone(WaypointX(WP_TRAJECTORY),WaypointY(WP_TRAJECTORY))){
         navigation_state = OUT_OF_BOUNDS;
-      } else if (obstacle_free_confidence == 0 || abs(avg_flow) > oa_avg_flow_threshold){
+      } 
+      // If confidence hits 0, OR either immediate threshold is crossed, react instantly
+      else if (obstacle_free_confidence == 0 || !optic_flow_safe || !color_safe){
         
         chooseDirectionalAvoidance(flow_der_x);
         navigation_state = OBSTACLE_FOUND;
-        VERBOSE_PRINT("O B S T A C L E    D E T E C T E D - flow_der_x: %d flow_der_y: %d avg_flow: %d\n", flow_der_x, flow_der_y, avg_flow);
+        
+        if (!color_safe) {
+            VERBOSE_PRINT("F A I L S A F E   T R I G G E R - Orange Pole Detected!\n");
+        } else {
+            VERBOSE_PRINT("O B S T A C L E   D E T E C T E D - Optic Flow Peak!\n");
+        }
         
       } else {
         moveWaypointForward(WP_GOAL, moveDistance);
@@ -262,11 +252,11 @@ void motion_module_group13_periodic(void)
 
       break;
     case OBSTACLE_FOUND:
-      // stop
+      // Stop
       waypoint_move_here_2d(WP_GOAL);
       waypoint_move_here_2d(WP_TRAJECTORY);
 
-      // select directional search direction
+      // Select directional search direction
       chooseDirectionalAvoidance(flow_der_x);
       turn_counter = 0;
 
@@ -277,7 +267,7 @@ void motion_module_group13_periodic(void)
       increase_nav_heading(heading_increment);
       turn_counter++;
 
-      // make sure we have a couple of good readings before declaring the way safe
+      // Make sure we have a couple of good readings before declaring the way safe
       if (obstacle_free_confidence >= 3 && turn_counter >= min_turn_cycles){
         navigation_state = SAFE;
         turn_counter = 0;  // Reset for next turning episode
@@ -288,13 +278,13 @@ void motion_module_group13_periodic(void)
       moveWaypointForward(WP_TRAJECTORY, 1.5f);
 
       if (InsideObstacleZone(WaypointX(WP_TRAJECTORY),WaypointY(WP_TRAJECTORY))){
-        // add offset to head back into arena
+        // Add offset to head back into arena
         increase_nav_heading(heading_increment);
 
-        // reset safe counter
+        // Reset safe counter
         obstacle_free_confidence = 0;
 
-        // ensure direction is safe before continuing
+        // Ensure direction is safe before continuing
         navigation_state = SEARCH_FOR_SAFE_HEADING;
       }
       break;
@@ -311,13 +301,11 @@ uint8_t increase_nav_heading(float incrementDegrees)
 {
   float new_heading = stateGetNedToBodyEulers_f()->psi + RadOfDeg(incrementDegrees);
 
-  // normalize heading to [-pi, pi]
+  // Normalize heading to [-pi, pi]
   FLOAT_ANGLE_NORMALIZE(new_heading);
 
-  // set heading, declared in firmwares/rotorcraft/navigation.h
+  // Set heading, declared in firmwares/rotorcraft/navigation.h
   nav.heading = new_heading;
-
-  // VERBOSE_PRINT("Increasing heading to %f\n", DegOfRad(new_heading));
   return false;
 }
 
@@ -339,13 +327,9 @@ uint8_t calculateForwards(struct EnuCoor_i *new_coor, float distanceMeters)
 {
   float heading  = stateGetNedToBodyEulers_f()->psi;
 
-  // Now determine where to place the waypoint you want to go to
+  // Determine where to place the waypoint you want to go to
   new_coor->x = stateGetPositionEnu_i()->x + POS_BFP_OF_REAL(sinf(heading) * (distanceMeters));
   new_coor->y = stateGetPositionEnu_i()->y + POS_BFP_OF_REAL(cosf(heading) * (distanceMeters));
-  // VERBOSE_PRINT("Calculated %f m forward position. x: %f  y: %f based on pos(%f, %f) and heading(%f)\n", distanceMeters,	
-                // POS_FLOAT_OF_BFP(new_coor->x), POS_FLOAT_OF_BFP(new_coor->y),
-                // stateGetPositionEnu_f()->x, stateGetPositionEnu_f()->y, DegOfRad(heading));
-  // VERBOSE_PRINT("RECEIVED parameters: x_dot: %i y_dot: %i  avg_flow: %i\n", flow_der_x, flow_der_y, avg_flow);
   return false;
 }
 
@@ -354,37 +338,22 @@ uint8_t calculateForwards(struct EnuCoor_i *new_coor, float distanceMeters)
  */
 uint8_t moveWaypoint(uint8_t waypoint, struct EnuCoor_i *new_coor)
 {
-  // VERBOSE_PRINT("Moving check_module workings. waypoint %d to x:%f y:%f\n", waypoint, POS_FLOAT_OF_BFP(new_coor->x),
-  //               POS_FLOAT_OF_BFP(new_coor->y));
   waypoint_move_xy_i(waypoint, new_coor->x, new_coor->y);
   return false;
 }
 
 /*
-//  * Sets the variable 'heading_increment' randomly positive/negative
-//  */
-// uint8_t chooseRandomIncrementAvoidance(void)
-// {
-//   // Randomly choose CW or CCW avoiding direction
-//   if (rand() % 2 == 0) {
-//     heading_increment = 5.f;
-//     VERBOSE_PRINT("Set avoidance increment to: %f\n", heading_increment);
-//   } else {
-//     heading_increment = -5.f;
-//     VERBOSE_PRINT("Set avoidance increment to: %f\n", heading_increment);
-//   }
-//   return false;
-// }
-
+ * Avoidance direction logic
+ */
 static uint8_t chooseDirectionalAvoidance(int16_t current_flow_der_x)
 {
-  // For center peaks, use random direction to avoid getting stuck
+  // For center peaks or untextured orange poles, use random direction to avoid getting stuck
   if (rand() % 2 == 0) {
     heading_increment = 5.f;
-    VERBOSE_PRINT("Random avoidance: Steering RIGHT\n");
+    VERBOSE_PRINT("Avoidance: Steering RIGHT\n");
   } else {
     heading_increment = -5.f;
-    VERBOSE_PRINT("Random avoidance: Steering LEFT\n");
+    VERBOSE_PRINT("Avoidance: Steering LEFT\n");
   }
   return false;
 }
