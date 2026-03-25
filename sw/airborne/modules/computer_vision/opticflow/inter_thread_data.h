@@ -58,6 +58,7 @@ struct opticflow_result_t {
 
   int16_t avg_flow; /// indicative of more edges (flow) on the left vs right
   uint8_t sparse_edge_bins; ///< Bitmask over 8 vertical bins, with the two emptiest bins set to 0
+  int16_t color_frac;
 };
 
 #endif

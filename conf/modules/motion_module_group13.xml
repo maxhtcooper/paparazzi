@@ -22,6 +22,7 @@ When the absolute value of avg_flow exceeds a threshold, we assume an obstacle i
     <define name="TURN_GAIN_DEG" value="0.05" description=""/>
     <define name="MAX_DIST" value="0.8" description=""/>
     <define name="TURN_FREQ" value="8" description=""/>
+    <define name="ORANGE_THRESHOLD" value="30" description=""/>
   </doc>
     <settings>
     <dl_settings>
@@ -36,6 +37,7 @@ When the absolute value of avg_flow exceeds a threshold, we assume an obstacle i
          <dl_setting var="turn_gain_deg" min="0" step="0.01f" max="0.2"/>
          <dl_setting var="max_distance" min="0" step="0.1f" max="1.5"/>
          <dl_setting var="turn_freq" min="0" step="1" max="20"/>
+         <dl_setting var="orange_threshold" min="0" step="1" max="50"/>
       </dl_settings>
     </dl_settings>
   </settings>
