@@ -60,9 +60,8 @@
     <module name="stabilization" type="rate_indi"/>
     <module name="ins" type="extended"/>
 
-    <module name="logger_file">
-      <define name="LOGGER_FILE_PATH" value="/tmp/paparazzi/log"/>
-    </module>
+    <module name="logger_file"/>
+    
 
     <!-- Video/Camera modules -->
     <module name="bebop_cam"/>
