@@ -56,6 +56,7 @@ enum navigation_state_t {
   SAFE,
   OBSTACLE_FOUND,
   SEARCH_FOR_SAFE_HEADING,
+  TURN,
   OUT_OF_BOUNDS
 };
 
@@ -68,7 +69,7 @@ enum navigation_state_t {
 #endif
 
 #ifndef MOTION_GROUP13_HIST_FLOW_THRESHOLD
-#define MOTION_GROUP13_HIST_FLOW_THRESHOLD 35.f
+#define MOTION_GROUP13_HIST_FLOW_THRESHOLD 32.f
 #endif
 
 #ifndef MOTION_GROUP13_MIN_FORWARD_DISTANCE
@@ -76,11 +77,11 @@ enum navigation_state_t {
 #endif
 
 #ifndef RESET_CONFIDENCE_LEVEL
-#define RESET_CONFIDENCE_LEVEL 8
+#define RESET_CONFIDENCE_LEVEL 5
 #endif
 
 #ifndef MAX_CONFIDENCE_LEVEL
-#define MAX_CONFIDENCE_LEVEL 11
+#define MAX_CONFIDENCE_LEVEL 6
 #endif
 
 #ifndef TURN_BASE_DEG
@@ -93,6 +94,10 @@ enum navigation_state_t {
 
 #ifndef MAX_DIST
 #define MAX_DIST 0.8f
+#endif
+
+#ifndef TURN_FREQ
+#define TURN_FREQ 8
 #endif
 
 // define settings 
@@ -111,6 +116,8 @@ float oa_flow_lpf_alpha = MOTION_GROUP13_FLOW_LPF_ALPHA;
 float turn_base_deg = TURN_BASE_DEG;
 // gain for non constant part of degrees to turn for the same reason as above
 float turn_gain_deg = TURN_GAIN_DEG;
+// turn in every no of loops
+uint8_t turn_freq = TURN_FREQ;
 
 // define and initialise global variables
 enum navigation_state_t navigation_state = SAFE;
@@ -125,6 +132,7 @@ static uint8_t straight_section_heading_initialized = 0;
 int16_t obstacle_free_confidence = 0;   // a measure of how certain we are that the way ahead is safe.
 float heading_increment = 0.f;          // heading angle increment [deg]
 float oob_hdg_incr_deg = 30.f;
+uint8_t turn_count = 0;
 
 // the confidence level decreases on positive obstacle detections. Since the obstacle detection is noisy
 // and eventually results in the drone turning, which produces unreliable edge flow readings,
@@ -191,46 +199,8 @@ static void optic_flow_cb(uint8_t __attribute__((unused)) sender_id,
   }
 }
 
-
-// --- 2. SVM LISTENER (For Visualization) ---
-#ifndef SVM_VISUAL_DETECTION_ID
-#define SVM_VISUAL_DETECTION_ID ABI_BROADCAST // We will update this ID later to match the SVM!
-#endif
-
-static abi_event svm_detection_ev;
-static void svm_detection_cb(uint8_t __attribute__((unused)) sender_id,
-                               int16_t pixel_x, int16_t  pixel_y,
-                               int16_t pixel_width, int16_t  pixel_height,
-                               int32_t __attribute__((unused)) quality, int16_t __attribute__((unused)) extra)
-{
-  // Save the AI's coordinates so our drawing function can see them
-  svm_bbox_x = pixel_x;
-  svm_bbox_y = pixel_y;
-  svm_bbox_width = pixel_width;
-  svm_bbox_height = pixel_height;
-}
-
 static struct video_listener *my_video_listener;
 
-// --- 3. SVM DRAWING FUNCTION ---
-static struct image_t * draw_svm_bounding_box(struct image_t *img, uint8_t camera_id){
-  (void)camera_id; 
-  if (svm_bbox_width > 0 && svm_bbox_height > 0){
-    int x_min = svm_bbox_x - (svm_bbox_width / 2);
-    int y_min = svm_bbox_y - (svm_bbox_height / 2);
-    int x_max = svm_bbox_x + (svm_bbox_width / 2);
-    int y_max = svm_bbox_y + (svm_bbox_height / 2);
-
-    // YUV color for bright Green so it contrasts with your red color filter boxes!
-    uint8_t green_yuv[3] = {150, 43, 21}; 
-    
-    // Draw thick green bounding box
-    for (int t = 0; t < 3; t++) {
-        image_draw_rectangle(img, x_min-t, x_max+t, y_min-t, y_max+t, green_yuv);
-    }
-  }
-  return img;
-}
 /*
  * Initialisation function, setting random seed and heading increment
  */
@@ -245,6 +215,7 @@ void motion_module_group13_init(void)
 
   straight_section_heading = stateGetNedToBodyEulers_f()->psi;
   straight_section_heading_initialized = 1;
+  turn_count = 0;
 }
 
 /*
@@ -263,6 +234,7 @@ void motion_module_group13_periodic(void)
   uint8_t obstacle_detected = (abs_avg_flow_f >= oa_hist_flow_threshold);
 
   float turn_increment = 0.f;
+  heading_increment = 0.f;
 
   if (obstacle_detected) {
     obstacle_free_confidence -= 1;
@@ -287,17 +259,68 @@ void motion_module_group13_periodic(void)
     }
 
   } else {
-    // TODO: implement the sparse_bin logic here
-    // Find out which bit closest to the center of the sparse map is 0
-    // and calculate a heading increment that would center that bit
     obstacle_free_confidence += 1;
   }
+  // Find the free sparse-bin sector closest to center (prefer 3, then 4).
+  int8_t closest_zero_bit = -1;
 
-  VERBOSE_PRINT("avg_flow: %d sparse_bin: 0b%d%d%d%d%d%d%d%d state: %d detection: %d turning: %.1f\n",
+  if (((sparse_bin >> 3) & 1U) == 0U) {
+    closest_zero_bit = 3;
+  } else if (((sparse_bin >> 4) & 1U) == 0U) {
+    closest_zero_bit = 4;
+  } else {
+    // Expand outward from the center pair until the nearest free bin is found.
+    for (uint8_t offset = 1; offset < 4 && closest_zero_bit < 0; offset++) {
+      int8_t left = 3 - (int8_t)offset;
+      int8_t right = 4 + (int8_t)offset;
+
+      if (left >= 0 && (((sparse_bin >> (uint8_t)left) & 1U) == 0U)) {
+        closest_zero_bit = left;
+      } else if (right <= 7 && (((sparse_bin >> (uint8_t)right) & 1U) == 0U)) {
+        closest_zero_bit = right;
+      }
+    }
+  }
+  
+  if (turn_count > turn_freq) {
+    switch (closest_zero_bit) {
+      case 0:
+        heading_increment = 30;
+        break;
+      case 1:
+        heading_increment = 20;
+        break;
+      case 2:
+        heading_increment = 10;
+        break;
+      case 3:
+        heading_increment = 0;
+        break;
+      
+      case 4:
+        heading_increment = 0;
+        break;
+      case 5:
+        heading_increment = -10;
+        break;
+      case 6:
+        heading_increment = -20;
+        break;
+      case 7:
+        heading_increment = -30;
+        break;
+    }
+    turn_count = 0;
+  } else {
+    turn_count += 1;
+  }
+
+  VERBOSE_PRINT("avg_flow: %d sparse_bin: 0b%d%d%d%d%d%d%d%d closest0: %d state: %d detection: %d turning: %.1f turn_count: %d\n",
                 avg_flow,
                 (sparse_bin >> 7) & 1, (sparse_bin >> 6) & 1, (sparse_bin >> 5) & 1, (sparse_bin >> 4) & 1,
                 (sparse_bin >> 3) & 1, (sparse_bin >> 2) & 1, (sparse_bin >> 1) & 1, sparse_bin & 1,
-                navigation_state, obstacle_detected, heading_increment);
+                closest_zero_bit,
+                navigation_state, obstacle_detected, heading_increment, turn_count);
 
   // bound obstacle_free_confidence
   Bound(obstacle_free_confidence, 0, max_trajectory_confidence);
@@ -315,13 +338,13 @@ void motion_module_group13_periodic(void)
       // Move waypoint forward
       // This moves a virtual waypoint to some location so the the if
       // block can check if this is inside the safe zone or not
-      moveWaypointForward(WP_TRAJECTORY, 1.f * move_distance, 0.f);
+      moveWaypointForward(WP_TRAJECTORY, 1.f * move_distance, heading_increment);
       if (!InsideObstacleZone(WaypointX(WP_TRAJECTORY),WaypointY(WP_TRAJECTORY))){
         navigation_state = OUT_OF_BOUNDS;
       } else {
         // Now we actually set our waypoint
         // no obstacle, so we go straight
-        struct EnuCoor_i new_goal = moveWaypointForward(WP_GOAL, move_distance, 0.f);
+        struct EnuCoor_i new_goal = moveWaypointForward(WP_GOAL, move_distance, heading_increment);
         // Update heading reference based on vector from current position to new goal
         struct EnuCoor_i current_pos = *stateGetPositionEnu_i();
         float dx = POS_FLOAT_OF_BFP(new_goal.x - current_pos.x);
@@ -330,6 +353,7 @@ void motion_module_group13_periodic(void)
         // Previously, it would just move the waypoint in the direction of the drone was facing
         // if the drone was turning, it lead to oscillations
         straight_section_heading = atan2f(dx, dy);
+        align_nav_heading_to_straight_section();
       }
 
       break;

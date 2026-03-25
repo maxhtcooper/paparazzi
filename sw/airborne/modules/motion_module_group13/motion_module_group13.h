@@ -26,12 +26,8 @@ extern uint8_t max_trajectory_confidence;
 extern float turn_base_deg;
 extern float turn_gain_deg;
 extern float max_distance;
+extern uint8_t turn_freq;
 
-// global variables
-extern int16_t svm_bbox_x;
-extern int16_t svm_bbox_y;
-extern int16_t svm_bbox_width;
-extern int16_t svm_bbox_height;
 // functions
 extern void motion_module_group13_init(void);
 extern void motion_module_group13_periodic(void);
