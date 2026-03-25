@@ -69,7 +69,7 @@ enum navigation_state_t {
 #endif
 
 #ifndef MOTION_GROUP13_HIST_FLOW_THRESHOLD
-#define MOTION_GROUP13_HIST_FLOW_THRESHOLD 32.f
+#define MOTION_GROUP13_HIST_FLOW_THRESHOLD 40.f
 #endif
 
 #ifndef MOTION_GROUP13_MIN_FORWARD_DISTANCE
@@ -101,7 +101,11 @@ enum navigation_state_t {
 #endif
 
 #ifndef ORANGE_THRESHOLD
-#define ORANGE_THRESHOLD 30
+#define ORANGE_THRESHOLD 25
+#endif
+
+#ifndef ORANGE_TURN_THRESHOLD
+#define ORANGE_TURN_THRESHOLD 5
 #endif
 
 // define settings 
@@ -124,6 +128,8 @@ float turn_gain_deg = TURN_GAIN_DEG;
 uint8_t turn_freq = TURN_FREQ;
 // threshold for orange emergency
 int16_t orange_threshold = ORANGE_THRESHOLD;
+// orange turn freq
+int16_t orange_turn_threshold = ORANGE_TURN_THRESHOLD;
 
 // define and initialise global variables
 enum navigation_state_t navigation_state = SAFE;
@@ -141,7 +147,6 @@ float oob_hdg_incr_deg = 30.f;
 uint8_t turn_count = 0;
 int16_t color_frac = 0;
 uint8_t orange_turn_count = 0;
-int16_t orange_turn_threshold = 6;
 
 // the confidence level decreases on positive obstacle detections. Since the obstacle detection is noisy
 // and eventually results in the drone turning, which produces unreliable edge flow readings,

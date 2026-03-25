@@ -9,7 +9,7 @@ The avoidance strategy is based purely on the optical-flow histogram signal (avg
 When the absolute value of avg_flow exceeds a threshold, we assume an obstacle is present and turn away.
     </description>
     <define name="OPTIC_FLOW_VISUAL_DETECTION_ID" value="ABI_BROADCAST" description="Which VISUAL_DETECTION message to receive for optical-flow outputs."/>
-    <define name="MOTION_GROUP13_HIST_FLOW_THRESHOLD" value="32" description="Absolute avg_flow threshold above which an obstacle is considered close."/>
+    <define name="MOTION_GROUP13_HIST_FLOW_THRESHOLD" value="40" description="Absolute avg_flow threshold above which an obstacle is considered close."/>
     <define name="MOTION_GROUP13_HIST_FLOW_CLEAR_THRESHOLD" value="25" description="Absolute avg_flow threshold below which path is considered clear enough to fly forward."/>
     <define name="MOTION_GROUP13_MIN_FORWARD_DISTANCE" value="0.35" description="Minimum forward waypoint step when peaks are near but not critical."/>
     <define name="MOTION_GROUP13_GAP_BALANCE_THRESHOLD" value="20" description="If |avg_flow| is below this while close flow exists, treat as two-side peaks with a gap ahead."/>
@@ -22,7 +22,8 @@ When the absolute value of avg_flow exceeds a threshold, we assume an obstacle i
     <define name="TURN_GAIN_DEG" value="0.05" description=""/>
     <define name="MAX_DIST" value="0.8" description=""/>
     <define name="TURN_FREQ" value="8" description=""/>
-    <define name="ORANGE_THRESHOLD" value="30" description=""/>
+    <define name="ORANGE_THRESHOLD" value="25" description=""/>
+    <define name="ORANGE_TURN_THRESHOLD" value="5" description=""/>
   </doc>
     <settings>
     <dl_settings>
@@ -38,6 +39,7 @@ When the absolute value of avg_flow exceeds a threshold, we assume an obstacle i
          <dl_setting var="max_distance" min="0" step="0.1f" max="1.5"/>
          <dl_setting var="turn_freq" min="0" step="1" max="20"/>
          <dl_setting var="orange_threshold" min="0" step="1" max="50"/>
+         <dl_setting var="orange_turn_threshold" min="0" step="1" max="10"/>
       </dl_settings>
     </dl_settings>
   </settings>
