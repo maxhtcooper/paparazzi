@@ -28,6 +28,7 @@ extern float turn_gain_deg;
 extern float max_distance;
 extern uint8_t turn_freq;
 extern int16_t orange_threshold;
+extern int16_t orange_turn_threshold;
 
 // functions
 extern void motion_module_group13_init(void);

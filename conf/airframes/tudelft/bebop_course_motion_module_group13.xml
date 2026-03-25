@@ -80,7 +80,7 @@
     </module>
     <module name="motion_module_group13">
       <define name="OPTIC_FLOW_VISUAL_DETECTION_ID" value="COLOR_OBJECT_DETECTION1_ID"/>
-      <define name="MOTION_GROUP13_HIST_FLOW_THRESHOLD" value="32"/>
+      <define name="MOTION_GROUP13_HIST_FLOW_THRESHOLD" value="40"/>
       <define name="MOTION_GROUP13_HIST_FLOW_CLEAR_THRESHOLD" value="45"/>
       <define name="MOTION_GROUP13_MIN_FORWARD_DISTANCE" value="0.35"/>
       <define name="MOTION_GROUP13_GAP_BALANCE_THRESHOLD" value="40"/>
