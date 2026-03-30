@@ -83,6 +83,14 @@ struct opticflow_t {
 
   const struct video_config_t *camera;
   uint8_t id;
+  uint8_t edge_threshold;        ///< passed on to calculate_edge_histogram()
+
+  uint8_t lum_min;
+  uint8_t lum_max;
+  uint8_t cb_min;
+  uint8_t cb_max;
+  uint8_t cr_min;
+  uint8_t cr_max;
 };
 
 #define FAST9_MAX_CORNERS 512

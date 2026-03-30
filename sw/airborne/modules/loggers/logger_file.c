@@ -45,6 +45,9 @@
 
 #include "generated/modules.h"
 
+// extern int32_t divergence;
+extern int32_t avg_flow;
+extern int16_t obstacle_free_confidence;
 /** Set the default File logger path to the USB drive */
 #ifndef LOGGER_FILE_PATH
 #define LOGGER_FILE_PATH /data/video/usb
@@ -75,11 +78,14 @@ static void logger_file_write_header(FILE *file) {
 #ifdef INS_EXT_POSE_H
   ins_ext_pos_log_header(file);
 #endif
+
 #ifdef COMMAND_THRUST
-  fprintf(file, "cmd_thrust,cmd_roll,cmd_pitch,cmd_yaw\n");
+  fprintf(file, "cmd_thrust,cmd_roll,cmd_pitch,cmd_yaw,");
 #else
-  fprintf(file, "h_ctl_aileron_setpoint,h_ctl_elevator_setpoint\n");
+
+  fprintf(file, "h_ctl_aileron_setpoint,h_ctl_elevator_setpoint");
 #endif
+fprintf(file, "EMPTY,EMPTY,avg_flow,obstacle_free_confidence\n");
 }
 
 /** Write CSV row
@@ -107,12 +113,14 @@ static void logger_file_write_row(FILE *file) {
   ins_ext_pos_log_data(file);
 #endif
 #ifdef COMMAND_THRUST
-  fprintf(file, "%d,%d,%d,%d\n",
+  fprintf(file, "%d,%d,%d,%d",
       stabilization.cmd[COMMAND_THRUST], stabilization.cmd[COMMAND_ROLL],
       stabilization.cmd[COMMAND_PITCH], stabilization.cmd[COMMAND_YAW]);
+  
 #else
   fprintf(file, "%d,%d\n", h_ctl_aileron_setpoint, h_ctl_elevator_setpoint);
 #endif
+  fprintf(file, "%d,%d,%d,%d\n", 0, 0, avg_flow, obstacle_free_confidence);
 }
 
 

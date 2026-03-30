@@ -1,0 +1,20 @@
+<!DOCTYPE module SYSTEM "module.dtd">
+<module name="svm" dir="computer_vision">
+  <doc>
+    <description>
+      Dense Optical Flow (Farneback) and SVM obstacle avoidance using OpenCV.
+    </description>
+  </doc>
+  
+  <header>
+    <file name="svm.h"/>
+  </header>
+  
+  <init fun="svm_init()"/>
+  
+  <makefile>
+    <file name="svm.cpp"/>
+    <flag name="CXXFLAGS" value="-std=c++11"/>
+    <flag name="LDFLAGS" value="-lopencv_core -lopencv_video -lopencv_imgproc"/>
+  </makefile>
+</module>

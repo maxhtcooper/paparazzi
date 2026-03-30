@@ -85,8 +85,10 @@ void  calc_previous_frame_nr(struct opticflow_result_t *result, struct opticflow
  * @param[in] direction  Indicating if the histogram is made in either x or y direction
  * @param[in] edge_threshold  A threshold if a gradient is considered a edge or not
  */
-void calculate_edge_histogram(struct image_t *img, int32_t edge_histogram[],
-                              char direction, uint16_t edge_threshold)
+int16_t calculate_edge_histogram(struct image_t *img, int32_t edge_histogram[],
+                              char direction, uint8_t edge_threshold, uint8_t lum_min,
+                              uint8_t lum_max, uint8_t cb_min, uint8_t cb_max,
+                              uint8_t cr_min, uint8_t cr_max)
 {
   uint8_t *img_buf = (uint8_t *)img->buf;
 
@@ -111,6 +113,8 @@ void calculate_edge_histogram(struct image_t *img, int32_t edge_histogram[],
       while (1);   // hang to show user something isn't right
   }
 
+  int32_t color_count = 0;
+  int16_t color_frac = 0;
 
   // compute edge histogram
   if (direction == 'x') {
@@ -137,6 +141,9 @@ void calculate_edge_histogram(struct image_t *img, int32_t edge_histogram[],
     edge_histogram[0] = edge_histogram[image_height - 1] = 0;
     for (y = 1; y < image_height - 1; y++) {
       edge_histogram[y] = 0;
+      // if ((y < image_height / 3) || (y > 2 * image_height / 3)) {
+      //   continue;
+      // }
       for (x = 0; x < image_width; x++) {
         sobel_sum = 0;
 
@@ -149,10 +156,36 @@ void calculate_edge_histogram(struct image_t *img, int32_t edge_histogram[],
         if (sobel_sum > edge_threshold) {
           edge_histogram[y] += sobel_sum;
         }
-      }
+
+        // We also do the color detection here for the emergency orange avoid mode here
+        // Since we are already inside the loop with the image buffer in memory
+        // Also this function is only called with direction == 'y' since the x edge histogram is not used
+        // Detect color pixels here and store count
+        uint8_t *yp, *up, *vp;
+        if (x % 2 == 0) {
+          up = &img_buf[y * 2 * img->w + 2 * x];      
+          yp = &img_buf[y * 2 * img->w + 2 * x + 1];  
+          vp = &img_buf[y * 2 * img->w + 2 * x + 2];  
+        } else {
+          up = &img_buf[y * 2 * img->w + 2 * x - 2];  
+          vp = &img_buf[y * 2 * img->w + 2 * x];      
+          yp = &img_buf[y * 2 * img->w + 2 * x + 1];  
+        }
+
+        // If the pixel matches the orange color threshold
+        if ( (*yp >= lum_min) && (*yp <= lum_max) &&
+            (*up >= cb_min ) && (*up <= cb_max ) &&
+            (*vp >= cr_min ) && (*vp <= cr_max )) {
+              color_count += 1;
+            }
+        }
     }
-  } else
+    // compute percentage of orange pixels in the frame
+    color_frac = (100 * color_count) / (image_height * image_width);
+  } else {
     while (1);  // hang to show user something isn't right
+  }
+  return color_frac;
 }
 
 /**
@@ -222,15 +255,19 @@ uint32_t getMinimum(uint32_t *a, uint32_t n)
   uint32_t i;
   uint32_t min_ind = 0;
   uint32_t min_err = a[min_ind];
-  uint32_t min_err_tot = 0;
+  uint32_t center = n / 2;
   for (i = 1; i < n; i++) {
-    if (a[i] <= min_err) {
+    if (a[i] < min_err) {
       min_ind = i;
       min_err = a[i];
-      min_err_tot += min_err;
+    } else if (a[i] == min_err) {
+      uint32_t dist_i = (i > center) ? (i - center) : (center - i);
+      uint32_t dist_min = (min_ind > center) ? (min_ind - center) : (center - min_ind);
+      if (dist_i < dist_min) {
+        min_ind = i;
+      }
     }
   }
-  //*min_error = min_err_tot;
   return min_ind;
 }
 
@@ -288,43 +325,101 @@ void line_fit(int32_t *displacement, int32_t *divergence, int32_t *flow, uint32_
 }
 
 /**
+ * Calculates the average (signed) megnitude of edgeflow present in a given histogram
+ */
+int32_t calculate_average_edge_flow(int32_t *displacement, uint16_t hist_size)
+{
+  int16_t sum = 0;
+  uint16_t i;
+  for (i = 0; i < hist_size; i++) {
+    sum += displacement[i];
+  }
+  return (int32_t)(100 * sum / (int32_t)hist_size);
+}
+
+/**
+ * Downsample edge_hist_y into 8 bins and return a byte mask.
+ * Bit i corresponds to bin i (0 = top of image, 7 = bottom).
+ * The two bins with the lowest edge sum are set to 0, all others to 1.
+ */
+uint8_t calculate_sparse_edge_bins_byte(int32_t *edge_hist_y, uint16_t hist_size)
+{
+  if (edge_hist_y == NULL || hist_size == 0) {
+    return 0xFF;
+  }
+
+  uint16_t bin_size = hist_size / 8;
+  uint16_t bins[8] = {0};
+
+  for (uint16_t i = 0; i < hist_size; i++) {
+    uint8_t bin_index = i / bin_size;
+    if (bin_index >= 8) bin_index = 7;
+    bins[bin_index] += edge_hist_y[i];
+  }
+
+  uint16_t min1 = UINT16_MAX, min2 = UINT16_MAX;
+  uint8_t min1_idx = 0, min2_idx = 0;
+
+  for (uint8_t i = 0; i < 8; i++) {
+      if (bins[i] < min1) {
+          min2 = min1;
+          min2_idx = min1_idx;
+
+          min1 = bins[i];
+          min1_idx = i;
+      } else if (bins[i] < min2) {
+          min2 = bins[i];
+          min2_idx = i;
+      }
+  }
+
+  uint8_t mask = 0xFF;
+
+  // Clear the two bits
+  mask &= ~(1 << (7 - min1_idx));
+  mask &= ~(1 << (7 - min2_idx));
+
+  return mask;
+}
+
+/**
  * Draws edgehistogram, displacement and linefit directly on the image for debugging (only for edgeflow in horizontal direction!!)
  * @param[out] *img The image structure where will be drawn on
  * @param[in] edgeflow Information structure for flow information
  * @param[in] Displacement Pixel wise Displacement array
  * @param[in] *edge_hist_x Horizontal edge_histogram
  */
-void draw_edgeflow_img(struct image_t *img, struct edge_flow_t edgeflow, int32_t *edge_hist_x_prev
-                       , int32_t *edge_hist_x)
+void draw_edgeflow_img(struct image_t *img, struct edge_flow_t edgeflow, int32_t *edge_hist_y_prev
+                       , int32_t *edge_hist_y, struct opticflow_result_t *result)
 {
   struct point_t point1;
   struct point_t point2;
-  struct point_t point1_prev;
-  struct point_t point2_prev;
+  // struct point_t point1_prev;
+  // struct point_t point2_prev;
   struct point_t point1_extra;
   struct point_t point2_extra;
   uint16_t i;
 
-  for (i = 1; i < img->w - 1; i++) {
-    point1.y = -(uint16_t)edge_hist_x[i] / 100 + img->h / 3;
-    point1.x = i;
-    point2.y = -(uint16_t)edge_hist_x[i + 1] / 100 + img->h / 3;
-    point2.x = i + 1;
+  for (i = 1; i < img->h - 1; i++) {
+    point1.y = i;
+    point1.x = -(uint16_t)edge_hist_y[i] / 100 + img->w / 3;
+    point2.y = i + 1;
+    point2.x = -(uint16_t)edge_hist_y[i + 1] / 100 + img->w / 3;
 
-    point1_prev.y = -(uint16_t)edge_hist_x_prev[i] / 100  + img->h * 2 / 3;
-    point1_prev.x = i;
-    point2_prev.y = -(uint16_t)edge_hist_x_prev[i + 1] / 100 + img->h * 2 / 3;
-    point2_prev.x = i + 1;
+    // point1_prev.y = -(uint16_t)edge_hist_y_prev[i] / 100  + img->h * 2 / 3;
+    // point1_prev.x = i;
+    // point2_prev.y = -(uint16_t)edge_hist_y_prev[i + 1] / 100 + img->h * 2 / 3;
+    // point2_prev.x = i + 1;
 
     image_draw_line(img, &point1, &point2);
-    image_draw_line(img, &point1_prev, &point2_prev);
+    // image_draw_line(img, &point1_prev, &point2_prev);
   }
 
-  point1_extra.y = (edgeflow.flow_x + edgeflow.div_x * img->w / 2) / 100 + img->h / 2;
-  point1_extra.x = 0;
-  point2_extra.y = (edgeflow.flow_x + edgeflow.div_x * img->w / 2) / 100 + img->h / 2;
-  point2_extra.x = img->w;
-  image_draw_line(img, &point1_extra, &point2_extra);
+  // point1_extra.y = img->h / 2;
+  // point1_extra.x = 0;
+  // point2_extra.y = img->h / 2;
+  // point2_extra.x = result->avg_flow;
+  // image_draw_line(img, &point1_extra, &point2_extra);
 }
 
 /**
