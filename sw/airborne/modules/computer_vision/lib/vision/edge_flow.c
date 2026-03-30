@@ -157,6 +157,9 @@ int16_t calculate_edge_histogram(struct image_t *img, int32_t edge_histogram[],
           edge_histogram[y] += sobel_sum;
         }
 
+        // We also do the color detection here for the emergency orange avoid mode here
+        // Since we are already inside the loop with the image buffer in memory
+        // Also this function is only called with direction == 'y' since the x edge histogram is not used
         // Detect color pixels here and store count
         uint8_t *yp, *up, *vp;
         if (x % 2 == 0) {
@@ -177,6 +180,7 @@ int16_t calculate_edge_histogram(struct image_t *img, int32_t edge_histogram[],
             }
         }
     }
+    // compute percentage of orange pixels in the frame
     color_frac = (100 * color_count) / (image_height * image_width);
   } else {
     while (1);  // hang to show user something isn't right

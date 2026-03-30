@@ -1159,6 +1159,7 @@ bool calc_edgeflow_tot(struct opticflow_t *opticflow, struct image_t *img,
   // Calculate current frame's edge histogram
   int32_t *edge_hist_x = edge_hist[current_frame_nr].x;
   int32_t *edge_hist_y = edge_hist[current_frame_nr].y;
+  // leave out for performance - x histogram and displacement are not used
   // calculate_edge_histogram(img, edge_hist_y, 'x', opticflow->edge_threshold,
   //   opticflow->lum_min, opticflow->lum_max, opticflow->cb_min, opticflow->cb_max,
   //   opticflow->cr_min, opticflow->cr_max); // horizontal edges
@@ -1192,23 +1193,24 @@ bool calc_edgeflow_tot(struct opticflow_t *opticflow, struct image_t *img,
   }
 
   // Estimate pixel wise displacement of the edge histograms for x and y direction
-  // leave out for performance
-  calculate_edge_displacement(edge_hist_x, prev_edge_histogram_x,
-                              displacement.x, img->w,
-                              window_size, disp_range,  der_shift_x);
+  // leave out for performance - x histogram and displacement are not used
+  // calculate_edge_displacement(edge_hist_x, prev_edge_histogram_x,
+  //                             displacement.x, img->w,
+  //                             window_size, disp_range,  der_shift_x);
   calculate_edge_displacement(edge_hist_y, prev_edge_histogram_y,
                               displacement.y, img->h,
                               window_size, disp_range, der_shift_y);
 
   // Fit a line on the pixel displacement to estimate
   // the global pixel flow and divergence (RES is resolution)
+
   // leave out for performance
-  line_fit(displacement.x, &edgeflow.div_x,
-           &edgeflow.flow_x, img->w,
-           window_size + disp_range, RES);
-  line_fit(displacement.y, &edgeflow.div_y,
-           &edgeflow.flow_y, img->h,
-           window_size + disp_range, RES);
+  // line_fit(displacement.x, &edgeflow.div_x,
+  //          &edgeflow.flow_x, img->w,
+  //          window_size + disp_range, RES);
+  // line_fit(displacement.y, &edgeflow.div_y,
+  //          &edgeflow.flow_y, img->h,
+  //          window_size + disp_range, RES);
 
   /* Save Resulting flow in results
    * Warning: The flow detected here is different in sign
@@ -1225,7 +1227,9 @@ bool calc_edgeflow_tot(struct opticflow_t *opticflow, struct image_t *img,
   result->flow_x = (int16_t)edgeflow.flow_x / RES;
   result->flow_y = (int16_t)edgeflow.flow_y / RES;
 
+  // bias of the edge flow used for collision avoidance
   result->avg_flow = calculate_average_edge_flow(displacement.y, img->h);
+  // compression of the 2D static edge histogram used for heading selection
   result->sparse_edge_bins = calculate_sparse_edge_bins_byte(edge_hist_y, img->h);
 
   //Fill up the results optic flow to be on par with LK_fast9
